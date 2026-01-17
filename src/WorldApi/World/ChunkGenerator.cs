@@ -42,8 +42,9 @@ public static class ChunkGenerator
             for (int x = 0; x < resolution; x++)
             {
                 // Calculate global coordinates for this point in the chunk
-                float globalX = chunkX * resolution + x;
-                float globalZ = chunkZ * resolution + z;
+                // Use (resolution - 1) as spacing so adjacent chunks share edge coordinates
+                float globalX = chunkX * (resolution - 1) + x;
+                float globalZ = chunkZ * (resolution - 1) + z;
 
                 // Generate height using a deterministic continuous function (combination of sine waves)
                 float height = (float)(

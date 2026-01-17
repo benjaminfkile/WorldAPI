@@ -3,8 +3,13 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
 COPY . .
-RUN dotnet restore
-RUN dotnet publish -c Release -o /app/publish
+
+# Restore only the API project
+RUN dotnet restore src/WorldApi/WorldApi.csproj
+
+# Publish only the API project
+RUN dotnet publish src/WorldApi/WorldApi.csproj -c Release -o /app/publish
+
 
 # ---- Runtime stage ----
 FROM mcr.microsoft.com/dotnet/aspnet:8.0

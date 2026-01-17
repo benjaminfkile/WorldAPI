@@ -1,0 +1,73 @@
+name: Build and Deploy World API
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    environment: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & Push Docker image
+        run: |
+          IMAGE_URI=${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}
+          GIT_SHA=$(git rev-parse --short HEAD)
+
+          echo "----------------------------------------------------"
+          echo "Branch: $GITHUB_REF_NAME"
+          echo "Environment: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}"
+          echo "Target ECR: $IMAGE_URI"
+          echo "----------------------------------------------------"
+
+          docker buildx create --use || true
+          docker buildx inspect --bootstrap
+
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            -t $IMAGE_URI:$GIT_SHA \
+            -t $IMAGE_URI:latest \
+            --push .
+
+      - name: Cancel any existing instance refresh
+        run: |
+          aws autoscaling cancel-instance-refresh \
+            --auto-scaling-group-name "${{ secrets.ASG_NAME }}" || true
+
+      - name: Wait for refresh to cancel
+        run: |
+          while true; do
+            STATUS=$(aws autoscaling describe-instance-refreshes \
+              --auto-scaling-group-name "${{ secrets.ASG_NAME }}" \
+              --query 'InstanceRefreshes[0].Status' --output text)
+
+            if [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "None" ] || [ "$STATUS" = "Successful" ]; then
+              break
+            fi
+
+            sleep 10
+          done
+
+      - name: Start new instance refresh
+        run: |
+          aws autoscaling start-instance-refresh \
+            --auto-scaling-group-name "${{ secrets.ASG_NAME }}" \
+            --strategy Rolling \
+            --preferences '{"MinHealthyPercentage": 100, "InstanceWarmup": 120}'

@@ -3,7 +3,7 @@ using Amazon.S3.Model;
 
 namespace WorldApi.World;
 
-public sealed class TerrainChunkReader
+public sealed class TerrainChunkReader : ITerrainChunkReader
 {
     private readonly IAmazonS3 _s3Client;
     private readonly string _bucketName;
@@ -33,6 +33,23 @@ public sealed class TerrainChunkReader
 
         // Deserialize into TerrainChunk
         return TerrainChunkSerializer.Deserialize(data, chunkX, chunkZ);
+    }
+
+    /// <summary>
+    /// Gets S3 object response for streaming directly to HTTP response.
+    /// Caller is responsible for disposing the response.
+    /// </summary>
+    public async Task<GetObjectResponse> GetStreamAsync(int chunkX, int chunkZ, int resolution, string worldVersion)
+    {
+        string s3Key = BuildS3Key(chunkX, chunkZ, resolution, worldVersion);
+        
+        var request = new GetObjectRequest
+        {
+            BucketName = _bucketName,
+            Key = s3Key
+        };
+
+        return await _s3Client.GetObjectAsync(request);
     }
 
     private string BuildS3Key(int chunkX, int chunkZ, int resolution, string worldVersion)

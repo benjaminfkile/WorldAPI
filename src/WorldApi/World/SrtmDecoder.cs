@@ -4,19 +4,31 @@ namespace WorldApi.World;
 
 public static class SrtmDecoder
 {
-    private const int SrtmSize = 1201;
-    private const int ExpectedByteCount = SrtmSize * SrtmSize * 2; // 2 bytes per sample
+    private const int Srtm3Size = 1201;
+    private const int Srtm1Size = 3601;
+    private const int Srtm3ByteCount = Srtm3Size * Srtm3Size * 2; // 1201×1201×2 = 2,884,802 bytes
+    private const int Srtm1ByteCount = Srtm1Size * Srtm1Size * 2; // 3601×3601×2 = 25,934,402 bytes
 
-    public static short[] Decode(byte[] data)
+    public static (short[] elevations, int width, int height) Decode(byte[] data)
     {
-        if (data.Length != ExpectedByteCount)
+        // Determine grid size from data length
+        int gridSize;
+        if (data.Length == Srtm3ByteCount)
+        {
+            gridSize = Srtm3Size;
+        }
+        else if (data.Length == Srtm1ByteCount)
+        {
+            gridSize = Srtm1Size;
+        }
+        else
         {
             throw new ArgumentException(
-                $"Expected {ExpectedByteCount} bytes for a 1201x1201 SRTM tile, got {data.Length}",
+                $"Invalid SRTM tile size. Expected {Srtm3ByteCount} bytes (SRTM3: 1201×1201) or {Srtm1ByteCount} bytes (SRTM1: 3601×3601), got {data.Length} bytes",
                 nameof(data));
         }
 
-        var elevations = new short[SrtmSize * SrtmSize];
+        var elevations = new short[gridSize * gridSize];
 
         for (int i = 0; i < elevations.Length; i++)
         {
@@ -25,6 +37,6 @@ public static class SrtmDecoder
             elevations[i] = BinaryPrimitives.ReadInt16BigEndian(data.AsSpan(byteIndex, 2));
         }
 
-        return elevations;
+        return (elevations, gridSize, gridSize);
     }
 }

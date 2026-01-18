@@ -28,8 +28,8 @@ public sealed class HgtTileLoader
         await response.ResponseStream.CopyToAsync(memoryStream);
         byte[] data = memoryStream.ToArray();
 
-        // Decode bytes using HGT decoder
-        short[] elevations = SrtmDecoder.Decode(data);
+        // Decode bytes using HGT decoder (detects SRTM1 or SRTM3)
+        var (elevations, width, height) = SrtmDecoder.Decode(data);
 
         // Populate geographic bounds from DemTile
         return new SrtmTileData
@@ -38,8 +38,8 @@ public sealed class HgtTileLoader
             MaxLatitude = tile.MaxLatitude,
             MinLongitude = tile.MinLongitude,
             MaxLongitude = tile.MaxLongitude,
-            Width = 1201,
-            Height = 1201,
+            Width = width,
+            Height = height,
             Elevations = elevations
         };
     }

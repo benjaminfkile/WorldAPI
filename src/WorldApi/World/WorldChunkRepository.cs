@@ -12,6 +12,22 @@ public sealed class WorldChunkRepository
         _connectionString = connectionString;
     }
 
+    private static string StatusToString(ChunkStatus status) => status switch
+    {
+        ChunkStatus.Pending => "pending",
+        ChunkStatus.Ready => "ready",
+        ChunkStatus.Failed => "failed",
+        _ => throw new ArgumentException($"Unknown status: {status}")
+    };
+
+    private static ChunkStatus StringToStatus(string status) => status switch
+    {
+        "pending" => ChunkStatus.Pending,
+        "ready" => ChunkStatus.Ready,
+        "failed" => ChunkStatus.Failed,
+        _ => throw new ArgumentException($"Unknown status string: {status}")
+    };
+
     public async Task<WorldChunkMetadata> InsertPendingAsync(
         int chunkX,
         int chunkZ,
@@ -46,7 +62,7 @@ public sealed class WorldChunkRepository
         command.Parameters.AddWithValue("@resolution", resolution);
         command.Parameters.AddWithValue("@worldVersion", worldVersion);
         command.Parameters.AddWithValue("@s3Key", s3Key);
-        command.Parameters.AddWithValue("@status", ChunkStatus.Pending);
+        command.Parameters.AddWithValue("@status", StatusToString(ChunkStatus.Pending));
         command.Parameters.AddWithValue("@generatedAt", DateTimeOffset.UtcNow);
 
         await using var reader = await command.ExecuteReaderAsync();
@@ -61,7 +77,7 @@ public sealed class WorldChunkRepository
             WorldVersion = reader.GetString(4),
             S3Key = reader.GetString(5),
             Checksum = reader.GetString(6),
-            Status = reader.GetString(7),
+            Status = StringToStatus(reader.GetString(7)),
             GeneratedAt = reader.GetFieldValue<DateTimeOffset>(8)
         };
     }
@@ -95,7 +111,7 @@ public sealed class WorldChunkRepository
         command.Parameters.AddWithValue("@resolution", resolution);
         command.Parameters.AddWithValue("@worldVersion", worldVersion);
         command.Parameters.AddWithValue("@checksum", checksum);
-        command.Parameters.AddWithValue("@status", ChunkStatus.Ready);
+        command.Parameters.AddWithValue("@status", StatusToString(ChunkStatus.Ready));
 
         await using var reader = await command.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
@@ -113,7 +129,7 @@ public sealed class WorldChunkRepository
             WorldVersion = reader.GetString(4),
             S3Key = reader.GetString(5),
             Checksum = reader.GetString(6),
-            Status = reader.GetString(7),
+            Status = StringToStatus(reader.GetString(7)),
             GeneratedAt = reader.GetFieldValue<DateTimeOffset>(8)
         };
     }
@@ -160,7 +176,7 @@ public sealed class WorldChunkRepository
             WorldVersion = reader.GetString(4),
             S3Key = reader.GetString(5),
             Checksum = reader.GetString(6),
-            Status = reader.GetString(7),
+            Status = StringToStatus(reader.GetString(7)),
             GeneratedAt = reader.GetFieldValue<DateTimeOffset>(8)
         };
     }

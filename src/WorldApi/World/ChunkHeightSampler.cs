@@ -10,40 +10,52 @@ public static class ChunkHeightSampler
         SrtmTileData tile,
         double chunkSizeMeters)
     {
-        var heights = new double[resolution * resolution];
-        double cellSize = chunkSizeMeters / (resolution - 1);
+        // Generate (resolution + 1) × (resolution + 1) grid for overlapping edges
+        int gridSize = resolution + 1;
+        System.Diagnostics.Debug.WriteLine(
+            $"[ChunkHeightSampler] START: chunk=({chunkX},{chunkZ}) resolution={resolution} gridSize={gridSize} expected={gridSize * gridSize}");
+        var heights = new double[gridSize * gridSize];
+        
+        // cellSize = chunkSizeMeters / resolution ensures edges align
+        // Last column of chunk (x,z) == first column of chunk (x+1,z)
+        double cellSize = chunkSizeMeters / resolution;
 
-        for (int z = 0; z < resolution; z++)
+        for (int z = 0; z < gridSize; z++)
         {
-            for (int x = 0; x < resolution; x++)
+            for (int x = 0; x < gridSize; x++)
             {
-                // Convert local cell position to world meters
-                // x=0, z=0 is the southwest corner of the chunk
-                double worldX = chunkX * chunkSizeMeters + x * cellSize;
-                double worldZ = chunkZ * chunkSizeMeters + z * cellSize;
-
-                // Convert world meters to chunk origin lat/lon, then offset by cell position
-                var chunkOrigin = coordinateService.GetChunkOriginLatLon(chunkX, chunkZ);
+                // CRITICAL: Calculate world coordinates in terms of cell indices from world origin
+                // This ensures bit-exact identical coordinates for shared edges between adjacent chunks
+                // 
+                // Instead of: worldX = chunkX * chunkSizeMeters + x * cellSize
+                // We use:     worldX = (chunkX * resolution + x) * cellSize
+                //
+                // This way, the right edge of chunk (0,0) at x=resolution gives:
+                //   worldX = (0 * resolution + resolution) * cellSize = resolution * cellSize
+                // And the left edge of chunk (1,0) at x=0 gives:
+                //   worldX = (1 * resolution + 0) * cellSize = resolution * cellSize
+                // Which are EXACTLY the same calculation, avoiding floating-point drift
                 
-                // Calculate cell offset in degrees
-                // worldX is east offset, worldZ is north offset from world origin
-                // We need to calculate offset from chunk origin
-                double eastOffsetMeters = x * cellSize;
-                double northOffsetMeters = z * cellSize;
+                int globalCellX = chunkX * resolution + x;
+                int globalCellZ = chunkZ * resolution + z;
+                
+                double worldX = globalCellX * cellSize;
+                double worldZ = globalCellZ * cellSize;
 
-                // Convert offset to degrees using the same logic as WorldCoordinateService
-                double latitude = chunkOrigin.Latitude + northOffsetMeters / 111320.0;
-                double longitude = chunkOrigin.Longitude + eastOffsetMeters / (111320.0 * Math.Cos(chunkOrigin.Latitude * Math.PI / 180.0));
+                // Convert world meters to lat/lon using consistent meters-per-degree conversion
+                var latLon = coordinateService.WorldMetersToLatLon(worldX, worldZ);
 
                 // Sample elevation from DEM tile
-                double elevation = DemSampler.SampleElevation(latitude, longitude, tile);
+                double elevation = DemSampler.SampleElevation(latLon.Latitude, latLon.Longitude, tile);
 
                 // Store in row-major order
-                int index = z * resolution + x;
+                int index = z * gridSize + x;
                 heights[index] = elevation;
             }
         }
 
+        System.Diagnostics.Debug.WriteLine(
+            $"[ChunkHeightSampler] END: chunk=({chunkX},{chunkZ}) resolution={resolution} returned_length={heights.Length}");
         return heights;
     }
 }

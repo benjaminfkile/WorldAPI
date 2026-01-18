@@ -53,6 +53,17 @@ public sealed class WorldCoordinateService
         return new LatLon(originLatitude, originLongitude);
     }
 
+    /// <summary>
+    /// Converts world-space meter coordinates to geographic coordinates.
+    /// Uses consistent meters-per-degree conversion based on world origin latitude.
+    /// </summary>
+    public LatLon WorldMetersToLatLon(double worldX, double worldZ)
+    {
+        double latitude = _config.Origin.Latitude + worldZ / 111320;
+        double longitude = _config.Origin.Longitude + worldX / _metersPerDegreeLongitude;
+        return new LatLon(latitude, longitude);
+    }
+
     private static double DegreesToRadians(double degrees)
     {
         return degrees * (Math.PI / 180);

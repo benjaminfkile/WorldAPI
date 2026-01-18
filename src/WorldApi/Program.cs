@@ -48,10 +48,20 @@ builder.Services.AddSingleton<TerrainChunkWriter>(sp =>
     var s3Client = sp.GetRequiredService<IAmazonS3>();
     var bucketName = builder.Configuration["AWS:S3:BucketName"] ?? throw new InvalidOperationException("AWS:S3:BucketName not configured");
     var config = sp.GetRequiredService<IOptions<WorldConfig>>();
-    return new TerrainChunkWriter(s3Client, bucketName, config);
+    var logger = sp.GetRequiredService<ILogger<TerrainChunkWriter>>();
+    return new TerrainChunkWriter(s3Client, bucketName, config, logger);
 });
 
-builder.Services.AddSingleton<TerrainChunkGenerator>();
+builder.Services.AddSingleton<TerrainChunkGenerator>(sp =>
+{
+    var coordinateService = sp.GetRequiredService<WorldCoordinateService>();
+    var tileIndex = sp.GetRequiredService<DemTileIndex>();
+    var tileCache = sp.GetRequiredService<HgtTileCache>();
+    var tileLoader = sp.GetRequiredService<HgtTileLoader>();
+    var config = sp.GetRequiredService<IOptions<WorldConfig>>();
+    var logger = sp.GetRequiredService<ILogger<TerrainChunkGenerator>>();
+    return new TerrainChunkGenerator(coordinateService, tileIndex, tileCache, tileLoader, config, logger);
+});
 
 builder.Services.AddScoped<WorldChunkRepository>(sp =>
 {

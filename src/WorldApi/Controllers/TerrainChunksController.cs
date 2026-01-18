@@ -35,6 +35,10 @@ public sealed class TerrainChunksController : ControllerBase
         // Check chunk status via coordinator
         var status = await _coordinator.GetChunkStatusAsync(chunkX, chunkZ, resolution, worldVersion);
 
+        _logger.LogInformation(
+            "[TRACE] Initial status check: ChunkX={ChunkX}, ChunkZ={ChunkZ}, Resolution={Resolution}, Status={Status}",
+            chunkX, chunkZ, resolution, status);
+
         if (status == ChunkStatus.Ready)
         {
             // Log cache hit
@@ -47,6 +51,10 @@ public sealed class TerrainChunksController : ControllerBase
             try
             {
                 s3Response = await _reader.GetStreamAsync(chunkX, chunkZ, resolution, worldVersion);
+
+                _logger.LogInformation(
+                    "[TRACE] S3 stream acquired: ChunkX={ChunkX}, ChunkZ={ChunkZ}, ContentLength={ContentLength}",
+                    chunkX, chunkZ, s3Response.ContentLength);
 
                 // Stream binary data directly from S3 to HTTP response
                 // Immutable content - cache forever
@@ -62,6 +70,10 @@ public sealed class TerrainChunksController : ControllerBase
                 // Set content length for proper streaming
                 Response.ContentLength = s3Response.ContentLength;
 
+                _logger.LogInformation(
+                    "[TRACE] Streaming S3 response to client: ChunkX={ChunkX}, ChunkZ={ChunkZ}, Bytes={ContentLength}",
+                    chunkX, chunkZ, s3Response.ContentLength);
+
                 // Stream directly from S3 to HTTP response body
                 await s3Response.ResponseStream.CopyToAsync(Response.Body, cancellationToken);
                 return new EmptyResult();
@@ -69,6 +81,9 @@ public sealed class TerrainChunksController : ControllerBase
             catch (Amazon.S3.AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
                 // Metadata says ready but S3 object missing - data inconsistency
+                _logger.LogWarning(
+                    "[TRACE] S3 404 mismatch: ChunkX={ChunkX}, ChunkZ={ChunkZ}, Resolution={Resolution}. Treating as NotFound.",
+                    chunkX, chunkZ, resolution);
                 // Fall through to trigger regeneration
                 status = ChunkStatus.NotFound;
             }
@@ -85,6 +100,10 @@ public sealed class TerrainChunksController : ControllerBase
                 "Terrain chunk request: {ChunkX}, {ChunkZ}, resolution {Resolution}, world {WorldVersion}, status {Status}",
                 chunkX, chunkZ, resolution, worldVersion, "pending");
 
+            _logger.LogInformation(
+                "[TRACE] Returning 202 Accepted (status=Pending): ChunkX={ChunkX}, ChunkZ={ChunkZ}, Resolution={Resolution}",
+                chunkX, chunkZ, resolution);
+
             // Chunk is being generated - do not cache, do not regenerate
             Response.Headers.CacheControl = "no-store";
             return Accepted();
@@ -94,6 +113,10 @@ public sealed class TerrainChunksController : ControllerBase
         _logger.LogInformation(
             "Terrain chunk request: {ChunkX}, {ChunkZ}, resolution {Resolution}, world {WorldVersion}, status {Status}",
             chunkX, chunkZ, resolution, worldVersion, "generated");
+
+        _logger.LogInformation(
+            "[TRACE] Triggering generation (status=NotFound): ChunkX={ChunkX}, ChunkZ={ChunkZ}, Resolution={Resolution}",
+            chunkX, chunkZ, resolution);
 
         // Chunk doesn't exist - trigger generation and return 202
         // TriggerGenerationAsync will check if already pending/ready to avoid duplicate work

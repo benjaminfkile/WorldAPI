@@ -8,7 +8,8 @@ public class TerrainChunkSerializerTests
 
     private static TerrainChunk CreateSampleChunk(int chunkX, int chunkZ, int resolution)
     {
-        var heights = new float[resolution * resolution];
+        int gridSize = resolution + 1;
+        var heights = new float[gridSize * gridSize];
         for (int i = 0; i < heights.Length; i++)
         {
             heights[i] = i * 0.5f; // Simple gradient
@@ -94,7 +95,7 @@ public class TerrainChunkSerializerTests
         var deserialized = TerrainChunkSerializer.Deserialize(serialized, 0, 0);
 
         // Assert
-        Assert.Equal(100, deserialized.Heights.Length); // 10 * 10
+        Assert.Equal(121, deserialized.Heights.Length); // (10 + 1) * (10 + 1)
     }
 
     [Fact]
@@ -120,7 +121,7 @@ public class TerrainChunkSerializerTests
         {
             ChunkX = 0,
             ChunkZ = 0,
-            Resolution = 5,
+            Resolution = 4,
             Heights = new float[25],
             MinElevation = 1234.567,
             MaxElevation = 9876.543
@@ -144,7 +145,7 @@ public class TerrainChunkSerializerTests
         {
             ChunkX = 0,
             ChunkZ = 0,
-            Resolution = 2,
+            Resolution = 1,
             Heights = new float[4] { heights[0], heights[1], heights[2], heights[3] },
             MinElevation = 1000.0,
             MaxElevation = 2000.0
@@ -169,7 +170,7 @@ public class TerrainChunkSerializerTests
         {
             ChunkX = 0,
             ChunkZ = 0,
-            Resolution = 5,
+            Resolution = 4,
             Heights = new float[25], // All zeros
             MinElevation = 0.0,
             MaxElevation = 0.0
@@ -192,7 +193,7 @@ public class TerrainChunkSerializerTests
         {
             ChunkX = 0,
             ChunkZ = 0,
-            Resolution = 2,
+            Resolution = 1,
             Heights = heights,
             MinElevation = -100.0,
             MaxElevation = -10.0
@@ -253,7 +254,7 @@ public class TerrainChunkSerializerTests
 
         // Assert
         Assert.Equal(100, deserialized.Resolution);
-        Assert.Equal(10000, deserialized.Heights.Length); // 100 * 100
+        Assert.Equal(10201, deserialized.Heights.Length); // (100 + 1) * (100 + 1)
     }
 
     [Fact]
@@ -286,7 +287,7 @@ public class TerrainChunkSerializerTests
         {
             ChunkX = 0,
             ChunkZ = 0,
-            Resolution = 3,
+            Resolution = 2,
             Heights = heights,
             MinElevation = 0.0,
             MaxElevation = 80.0
@@ -311,7 +312,7 @@ public class TerrainChunkSerializerTests
         {
             ChunkX = 0,
             ChunkZ = 0,
-            Resolution = 2,
+            Resolution = 1,
             Heights = new float[4] { 1.0f, 2.0f, 3.0f, 4.0f },
             MinElevation = 100.0,
             MaxElevation = 200.0
@@ -322,9 +323,74 @@ public class TerrainChunkSerializerTests
         var deserialized = TerrainChunkSerializer.Deserialize(serialized, 0, 0);
 
         // Assert
-        Assert.Equal(2, deserialized.Resolution);
+        Assert.Equal(1, deserialized.Resolution);
         Assert.Equal(4, deserialized.Heights.Length);
         Assert.Equal(100.0, deserialized.MinElevation, Tolerance);
         Assert.Equal(200.0, deserialized.MaxElevation, Tolerance);
+    }
+
+    [Theory]
+    [InlineData(1)]   // 2x2 grid
+    [InlineData(4)]   // 5x5 grid
+    [InlineData(8)]   // 9x9 grid
+    [InlineData(16)]  // 17x17 grid
+    [InlineData(32)]  // 33x33 grid
+    [InlineData(64)]  // 65x65 grid
+    public void Serialize_ExactBufferSize_MatchesContract(int resolution)
+    {
+        // Arrange
+        int gridSize = resolution + 1;
+        int expectedHeightCount = gridSize * gridSize;
+        int expectedByteSize = 1 + 2 + 8 + 8 + (expectedHeightCount * 4);
+
+        var chunk = CreateSampleChunk(0, 0, resolution);
+
+        // Act
+        byte[] serialized = TerrainChunkSerializer.Serialize(chunk);
+
+        // Assert - exact contract enforcement
+        Assert.Equal(expectedByteSize, serialized.Length);
+        Assert.Equal(expectedHeightCount, chunk.Heights.Length);
+        
+        // Verify roundtrip maintains exact size
+        var deserialized = TerrainChunkSerializer.Deserialize(serialized, 0, 0);
+        Assert.Equal(expectedHeightCount, deserialized.Heights.Length);
+    }
+
+    [Fact]
+    public void Serialize_WrongHeightCount_Throws()
+    {
+        // Arrange - intentionally create chunk with wrong height count
+        var chunk = new TerrainChunk
+        {
+            ChunkX = 0,
+            ChunkZ = 0,
+            Resolution = 16,
+            Heights = new float[256],  // 16*16 instead of 17*17 (289)
+            MinElevation = 1000.0,
+            MaxElevation = 1500.0
+        };
+
+        // Act & Assert
+        var ex = Assert.Throws<InvalidDataException>(() => TerrainChunkSerializer.Serialize(chunk));
+        Assert.Contains("expected heights length 289", ex.Message);
+        Assert.Contains("chunk (0,0)", ex.Message);
+        Assert.Contains("r=16", ex.Message);
+    }
+
+    [Fact]
+    public void Deserialize_WrongBufferSize_Throws()
+    {
+        // Arrange - create a valid 16x16 serialized chunk, then corrupt it by removing bytes
+        var validChunk = CreateSampleChunk(0, 0, 16);
+        byte[] validSerialized = TerrainChunkSerializer.Serialize(validChunk);
+
+        // Truncate to simulate undersized payload
+        byte[] corruptedData = new byte[validSerialized.Length - 10];
+        Array.Copy(validSerialized, corruptedData, corruptedData.Length);
+
+        // Act & Assert
+        var ex = Assert.Throws<InvalidDataException>(() => TerrainChunkSerializer.Deserialize(corruptedData, 0, 0));
+        Assert.Contains("byte size mismatch", ex.Message);
     }
 }

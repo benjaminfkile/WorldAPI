@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
 
 namespace WorldApi.World;
 
@@ -9,23 +10,29 @@ public sealed class TerrainChunkGenerator
     private readonly HgtTileCache _tileCache;
     private readonly HgtTileLoader _tileLoader;
     private readonly WorldConfig _config;
+    private readonly ILogger<TerrainChunkGenerator> _logger;
 
     public TerrainChunkGenerator(
         WorldCoordinateService coordinateService,
         DemTileIndex tileIndex,
         HgtTileCache tileCache,
         HgtTileLoader tileLoader,
-        IOptions<WorldConfig> config)
+        IOptions<WorldConfig> config,
+        ILogger<TerrainChunkGenerator> logger)
     {
         _coordinateService = coordinateService;
         _tileIndex = tileIndex;
         _tileCache = tileCache;
         _tileLoader = tileLoader;
         _config = config.Value;
+        _logger = logger;
     }
 
     public async Task<TerrainChunk> GenerateAsync(int chunkX, int chunkZ, int resolution)
     {
+        _logger.LogInformation("[TRACE] GenerateAsync start: ChunkX={ChunkX}, ChunkZ={ChunkZ}, Resolution={Resolution}",
+            chunkX, chunkZ, resolution);
+
         // Step 1: Determine lat/lon bounds of the chunk
         var chunkOrigin = _coordinateService.GetChunkOriginLatLon(chunkX, chunkZ);
         
@@ -58,11 +65,30 @@ public sealed class TerrainChunkGenerator
             tileData!,
             _config.ChunkSizeMeters);
 
+        _logger.LogInformation("[TRACE] After SampleHeights: ChunkX={ChunkX}, ChunkZ={ChunkZ}, RawHeightsLength={RawHeightsLength}",
+            chunkX, chunkZ, rawHeights.Length);
+
         // Step 5: Normalize heights
         var normalized = HeightNormalizer.Normalize(rawHeights);
 
+        _logger.LogInformation("[TRACE] After Normalize: ChunkX={ChunkX}, ChunkZ={ChunkZ}, NormalizedHeightsLength={NormalizedHeightsLength}",
+            chunkX, chunkZ, normalized.Heights.Length);
+
+        // Guard: ensure heights match (resolution + 1)^2 exactly
+        int gridSize = resolution + 1;
+        int expectedLength = gridSize * gridSize;
+        if (normalized.Heights.Length != expectedLength)
+        {
+            _logger.LogError("[GUARD] Heights length mismatch: ChunkX={ChunkX}, ChunkZ={ChunkZ}, Resolution={Resolution}, Expected={ExpectedLength}, Actual={ActualLength}",
+                chunkX, chunkZ, resolution, expectedLength, normalized.Heights.Length);
+            System.Diagnostics.Debug.WriteLine(
+                $"[terrain] INVALID HEIGHTS LENGTH chunk=({chunkX},{chunkZ}) r={resolution} expected={expectedLength} actual={normalized.Heights.Length}");
+            throw new InvalidDataException(
+                $"Terrain heights length mismatch for chunk ({chunkX},{chunkZ}) r={resolution}: expected {expectedLength} (gridSize {gridSize}²), got {normalized.Heights.Length}");
+        }
+
         // Step 6: Return TerrainChunk
-        return new TerrainChunk
+        var result = new TerrainChunk
         {
             ChunkX = chunkX,
             ChunkZ = chunkZ,
@@ -71,5 +97,10 @@ public sealed class TerrainChunkGenerator
             MinElevation = normalized.MinElevation,
             MaxElevation = normalized.MaxElevation
         };
+
+        _logger.LogInformation("[TRACE] GenerateAsync complete: ChunkX={ChunkX}, ChunkZ={ChunkZ}, Resolution={Resolution}, FinalHeightsLength={FinalHeightsLength}",
+            chunkX, chunkZ, resolution, result.Heights.Length);
+
+        return result;
     }
 }

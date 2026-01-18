@@ -11,6 +11,8 @@ public static class HeightNormalizer
 
     public static NormalizedHeights Normalize(double[] rawHeights)
     {
+        System.Diagnostics.Debug.WriteLine(
+            $"[HeightNormalizer] START: input_length={rawHeights.Length}");
         // Find min and max elevation, excluding missing data
         double minElevation = double.MaxValue;
         double maxElevation = double.MinValue;
@@ -33,7 +35,8 @@ public static class HeightNormalizer
             maxElevation = 0.0;
         }
 
-        // Normalize heights
+        // Store absolute elevation values (do NOT subtract minElevation)
+        // Client can normalize for rendering with consistent global scale
         var normalizedHeights = new float[rawHeights.Length];
         for (int i = 0; i < rawHeights.Length; i++)
         {
@@ -43,10 +46,13 @@ public static class HeightNormalizer
             }
             else
             {
-                normalizedHeights[i] = (float)(rawHeights[i] - minElevation);
+                // Store absolute elevation in meters
+                normalizedHeights[i] = (float)rawHeights[i];
             }
         }
 
+        System.Diagnostics.Debug.WriteLine(
+            $"[HeightNormalizer] END: output_length={normalizedHeights.Length}");
         return new NormalizedHeights(normalizedHeights, minElevation, maxElevation);
     }
 }

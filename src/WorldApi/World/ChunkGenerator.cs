@@ -32,19 +32,21 @@ public static class ChunkGenerator
     // Helper method to generate deterministic heightmap and min/max values for a chunk
     private static (float[] heights, float minHeight, float maxHeight) GenerateHeightmap(int chunkX, int chunkZ, int resolution)
     {
-        var heights = new float[resolution * resolution];
+        // Generate (resolution + 1) × (resolution + 1) grid for overlapping edges
+        int gridSize = resolution + 1;
+        var heights = new float[gridSize * gridSize];
         float minHeight = float.MaxValue;
         float maxHeight = float.MinValue;
 
-        // Loop over z (rows) then x (columns) for row-major order: index = z * resolution + x
-        for (int z = 0; z < resolution; z++)
+        // Loop over z (rows) then x (columns) for row-major order: index = z * gridSize + x
+        for (int z = 0; z < gridSize; z++)
         {
-            for (int x = 0; x < resolution; x++)
+            for (int x = 0; x < gridSize; x++)
             {
                 // Calculate global coordinates for this point in the chunk
-                // Use (resolution - 1) as spacing so adjacent chunks share edge coordinates
-                float globalX = chunkX * (resolution - 1) + x;
-                float globalZ = chunkZ * (resolution - 1) + z;
+                // Use resolution as spacing so adjacent chunks share edge coordinates
+                float globalX = chunkX * resolution + x;
+                float globalZ = chunkZ * resolution + z;
 
                 // Generate height using a deterministic continuous function (combination of sine waves)
                 float height = (float)(
@@ -52,7 +54,7 @@ public static class ChunkGenerator
                     Math.Sin(globalZ * 0.1) * 2.0 +
                     Math.Sin((globalX + globalZ) * 0.05) * 1.0
                 );
-                heights[z * resolution + x] = height;
+                heights[z * gridSize + x] = height;
                 if (height < minHeight) minHeight = height;
                 if (height > maxHeight) maxHeight = height;
             }

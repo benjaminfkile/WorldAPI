@@ -65,12 +65,13 @@ public class ChunkGeneratorTests
         var westHeights = GetHeights(westChunk);
         var eastHeights = GetHeights(eastChunk);
         int resolution = GetResolution(westChunk);
+        int gridSize = resolution + 1;
 
         // East edge of west chunk should match west edge of east chunk
-        for (int z = 0; z < resolution; z++)
+        for (int z = 0; z < gridSize; z++)
         {
-            int westEastEdgeIndex = z * resolution + (resolution - 1); // Last column
-            int eastWestEdgeIndex = z * resolution + 0; // First column
+            int westEastEdgeIndex = z * gridSize + (gridSize - 1); // Last column
+            int eastWestEdgeIndex = z * gridSize + 0; // First column
 
             Assert.Equal(westHeights[westEastEdgeIndex], eastHeights[eastWestEdgeIndex], Tolerance);
         }
@@ -87,12 +88,13 @@ public class ChunkGeneratorTests
         var northHeights = GetHeights(northChunk);
         var southHeights = GetHeights(southChunk);
         int resolution = GetResolution(northChunk);
+        int gridSize = resolution + 1;
 
         // South edge of north chunk should match north edge of south chunk
-        for (int x = 0; x < resolution; x++)
+        for (int x = 0; x < gridSize; x++)
         {
-            int northSouthEdgeIndex = (resolution - 1) * resolution + x; // Last row
-            int southNorthEdgeIndex = 0 * resolution + x; // First row
+            int northSouthEdgeIndex = (gridSize - 1) * gridSize + x; // Last row
+            int southNorthEdgeIndex = 0 * gridSize + x; // First row
 
             Assert.Equal(northHeights[northSouthEdgeIndex], southHeights[southNorthEdgeIndex], Tolerance);
         }
@@ -134,7 +136,8 @@ public class ChunkGeneratorTests
         var resolution = GetResolution(result);
 
         Assert.NotNull(heights);
-        Assert.Equal(resolution * resolution, heights.Length);
+        int gridSize = resolution + 1;
+        Assert.Equal(gridSize * gridSize, heights.Length);
         Assert.True(minHeight <= maxHeight);
         Assert.True(heights.All(h => h >= minHeight && h <= maxHeight));
     }

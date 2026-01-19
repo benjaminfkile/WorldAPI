@@ -82,22 +82,34 @@ public sealed class WorldChunkRepository
         };
     }
 
-    public async Task<WorldChunkMetadata> UpdateToReadyAsync(
+    /// <summary>
+    /// Upsert chunk metadata: Insert as ready or update if already exists.
+    /// Single operation optimized for performance - no pending state.
+    /// </summary>
+    public async Task<WorldChunkMetadata> UpsertReadyAsync(
         int chunkX,
         int chunkZ,
         string layer,
         int resolution,
         string worldVersion,
+        string s3Key,
         string checksum)
     {
         const string sql = @"
-            UPDATE world_chunks
-            SET status = @status, checksum = @checksum
-            WHERE chunk_x = @chunkX 
-              AND chunk_z = @chunkZ 
-              AND layer = @layer
-              AND resolution = @resolution
-              AND world_version = @worldVersion
+            INSERT INTO world_chunks (
+                chunk_x, chunk_z, layer, resolution, world_version, 
+                s3_key, checksum, status, generated_at
+            )
+            VALUES (
+                @chunkX, @chunkZ, @layer, @resolution, @worldVersion,
+                @s3Key, @checksum, @status, @generatedAt
+            )
+            ON CONFLICT (chunk_x, chunk_z, layer, resolution, world_version) 
+            DO UPDATE SET 
+                s3_key = EXCLUDED.s3_key,
+                checksum = EXCLUDED.checksum,
+                status = EXCLUDED.status,
+                generated_at = EXCLUDED.generated_at
             RETURNING chunk_x, chunk_z, layer, resolution, world_version, 
                       s3_key, checksum, status, generated_at";
 
@@ -110,15 +122,13 @@ public sealed class WorldChunkRepository
         command.Parameters.AddWithValue("@layer", layer);
         command.Parameters.AddWithValue("@resolution", resolution);
         command.Parameters.AddWithValue("@worldVersion", worldVersion);
+        command.Parameters.AddWithValue("@s3Key", s3Key);
         command.Parameters.AddWithValue("@checksum", checksum);
         command.Parameters.AddWithValue("@status", StatusToString(ChunkStatus.Ready));
+        command.Parameters.AddWithValue("@generatedAt", DateTimeOffset.UtcNow);
 
         await using var reader = await command.ExecuteReaderAsync();
-        if (!await reader.ReadAsync())
-        {
-            throw new InvalidOperationException(
-                $"Chunk ({chunkX}, {chunkZ}) layer={layer} resolution={resolution} version={worldVersion} not found");
-        }
+        await reader.ReadAsync();
 
         return new WorldChunkMetadata
         {

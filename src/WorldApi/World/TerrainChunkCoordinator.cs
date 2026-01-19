@@ -31,33 +31,31 @@ public class TerrainChunkCoordinator : ITerrainChunkCoordinator
         int resolution,
         string layer)
     {
-        // Build S3 key for metadata
+        // Build S3 key
         string s3Key = $"chunks/{_worldVersion}/terrain/r{resolution}/{chunkX}/{chunkZ}.bin";
-
-        // Step 1: Insert pending metadata row
-        // Use UPSERT to handle concurrent requests - if another request already inserted, this will update
-        await _repository.InsertPendingAsync(
-            chunkX, chunkZ, layer, resolution, _worldVersion, s3Key);
 
         try
         {
-            // Step 2: Generate chunk
+            // Step 1: Generate chunk in memory
             var chunk = await _generator.GenerateAsync(chunkX, chunkZ, resolution);
 
-            // Step 3: Serialize and upload to S3
-            // Writer handles not overwriting existing objects
+            // Step 2: Upload to S3 first (before DB commit)
+            // If this fails, no DB record exists yet - safe to retry
             var uploadResult = await _writer.WriteAsync(chunk);
 
-            // Step 4: Update metadata to ready
-            await _repository.UpdateToReadyAsync(
-                chunkX, chunkZ, layer, resolution, _worldVersion, uploadResult.Checksum);
+            // Step 3: Single DB operation - upsert as ready
+            // Idempotent: concurrent requests will see ready state
+            // If this fails, S3 object exists orphaned (acceptable, retryable)
+            await _repository.UpsertReadyAsync(
+                chunkX, chunkZ, layer, resolution, _worldVersion, s3Key, uploadResult.Checksum);
 
             return chunk;
         }
         catch (Exception ex)
         {
-            // Note: In production, you might want to update status to 'failed'
-            // For now, we'll leave it in pending and let the caller handle the exception
+            _logger.LogError(ex,
+                "Failed to generate and upload chunk: ChunkX={ChunkX}, ChunkZ={ChunkZ}, Resolution={Resolution}",
+                chunkX, chunkZ, resolution);
             throw new InvalidOperationException(
                 $"Failed to generate chunk ({chunkX}, {chunkZ}) resolution={resolution}: {ex.Message}", ex);
         }
@@ -107,7 +105,7 @@ public class TerrainChunkCoordinator : ITerrainChunkCoordinator
 
     /// <summary>
     /// Triggers chunk generation without waiting for completion.
-    /// Only starts generation if chunk is not already pending or ready.
+    /// Only starts generation if chunk is not already ready.
     /// Uses fire-and-forget pattern for async generation.
     /// </summary>
     public virtual async Task TriggerGenerationAsync(
@@ -123,21 +121,17 @@ public class TerrainChunkCoordinator : ITerrainChunkCoordinator
             throw new ArgumentException($"Invalid world version: {worldVersion}. Expected: {_worldVersion}");
         }
 
-        // Check if chunk already exists or is pending
+        // Check if chunk already exists and is ready
         var existingMetadata = await _repository.GetChunkAsync(
             chunkX, chunkZ, layer, resolution, _worldVersion);
 
-        if (existingMetadata != null)
+        if (existingMetadata != null && existingMetadata.Status == ChunkStatus.Ready)
         {
-            // Chunk already exists (either pending or ready) - do not regenerate
+            // Chunk already ready - do not regenerate
             return;
         }
 
-        // Insert pending metadata
-        string s3Key = $"chunks/{_worldVersion}/terrain/r{resolution}/{chunkX}/{chunkZ}.bin";
-        await _repository.InsertPendingAsync(chunkX, chunkZ, layer, resolution, _worldVersion, s3Key);
-
-        // Fire-and-forget generation
+        // Fire-and-forget generation (with S3-first ordering)
         _ = Task.Run(async () =>
         {
             try
@@ -146,10 +140,11 @@ public class TerrainChunkCoordinator : ITerrainChunkCoordinator
                     "Starting background terrain generation: chunk ({ChunkX}, {ChunkZ}), resolution {Resolution}",
                     chunkX, chunkZ, resolution);
 
+                string s3Key = $"chunks/{_worldVersion}/terrain/r{resolution}/{chunkX}/{chunkZ}.bin";
                 var chunk = await _generator.GenerateAsync(chunkX, chunkZ, resolution);
                 var uploadResult = await _writer.WriteAsync(chunk);
-                await _repository.UpdateToReadyAsync(
-                    chunkX, chunkZ, layer, resolution, _worldVersion, uploadResult.Checksum);
+                await _repository.UpsertReadyAsync(
+                    chunkX, chunkZ, layer, resolution, _worldVersion, s3Key, uploadResult.Checksum);
 
                 _logger.LogInformation(
                     "Completed background terrain generation: chunk ({ChunkX}, {ChunkZ}), resolution {Resolution}, checksum {Checksum}",

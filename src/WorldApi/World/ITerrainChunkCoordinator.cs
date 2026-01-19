@@ -9,6 +9,12 @@ public interface ITerrainChunkCoordinator
         string worldVersion,
         string layer = "terrain");
 
+    Task<WorldChunkMetadata?> GetChunkMetadataAsync(
+        int chunkX,
+        int chunkZ,
+        int resolution,
+        string layer = "terrain");
+
     Task TriggerGenerationAsync(
         int chunkX,
         int chunkZ,

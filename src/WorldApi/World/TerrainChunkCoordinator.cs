@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
+using System.Security.Cryptography;
 
 namespace WorldApi.World;
 
@@ -39,22 +40,40 @@ public class TerrainChunkCoordinator : ITerrainChunkCoordinator
             // Step 1: Generate chunk in memory
             var chunk = await _generator.GenerateAsync(chunkX, chunkZ, resolution);
 
-            // Step 2: Upload to S3 first (before DB commit)
-            // If this fails, no DB record exists yet - safe to retry
-            var uploadResult = await _writer.WriteAsync(chunk);
+            // Step 2: Serialize chunk for S3 (do this sync to capture any errors early)
+            byte[] serializedData = TerrainChunkSerializer.Serialize(chunk);
 
-            // Step 3: Single DB operation - upsert as ready
-            // Idempotent: concurrent requests will see ready state
-            // If this fails, S3 object exists orphaned (acceptable, retryable)
+            // Step 3: Upsert DB metadata with a pending checksum
+            // This is FAST and response-blocking (good)
+            string contentHash = Convert.ToHexString(SHA256.HashData(serializedData));
             await _repository.UpsertReadyAsync(
-                chunkX, chunkZ, layer, resolution, _worldVersion, s3Key, uploadResult.Checksum);
+                chunkX, chunkZ, layer, resolution, _worldVersion, s3Key, contentHash);
+
+            // Step 4: Upload to S3 in background (fire-and-forget)
+            // Response returns immediately after DB upsert
+            // S3 upload completes async without blocking the request thread
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _writer.WriteAsync(chunk);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex,
+                        "Background S3 upload failed (chunk already in DB): ChunkX={ChunkX}, ChunkZ={ChunkZ}",
+                        chunkX, chunkZ);
+                    // Don't throw - chunk is already marked ready in DB
+                    // S3 upload will be retried on next cache miss
+                }
+            });
 
             return chunk;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                "Failed to generate and upload chunk: ChunkX={ChunkX}, ChunkZ={ChunkZ}, Resolution={Resolution}",
+                "Failed to generate chunk: ChunkX={ChunkX}, ChunkZ={ChunkZ}, Resolution={Resolution}",
                 chunkX, chunkZ, resolution);
             throw new InvalidOperationException(
                 $"Failed to generate chunk ({chunkX}, {chunkZ}) resolution={resolution}: {ex.Message}", ex);
@@ -136,9 +155,9 @@ public class TerrainChunkCoordinator : ITerrainChunkCoordinator
         {
             try
             {
-                _logger.LogInformation(
-                    "Starting background terrain generation: chunk ({ChunkX}, {ChunkZ}), resolution {Resolution}",
-                    chunkX, chunkZ, resolution);
+                // _logger.LogInformation(
+                //     "Starting background terrain generation: chunk ({ChunkX}, {ChunkZ}), resolution {Resolution}",
+                //     chunkX, chunkZ, resolution);
 
                 string s3Key = $"chunks/{_worldVersion}/terrain/r{resolution}/{chunkX}/{chunkZ}.bin";
                 var chunk = await _generator.GenerateAsync(chunkX, chunkZ, resolution);
@@ -146,9 +165,9 @@ public class TerrainChunkCoordinator : ITerrainChunkCoordinator
                 await _repository.UpsertReadyAsync(
                     chunkX, chunkZ, layer, resolution, _worldVersion, s3Key, uploadResult.Checksum);
 
-                _logger.LogInformation(
-                    "Completed background terrain generation: chunk ({ChunkX}, {ChunkZ}), resolution {Resolution}, checksum {Checksum}",
-                    chunkX, chunkZ, resolution, uploadResult.Checksum);
+                // _logger.LogInformation(
+                //     "Completed background terrain generation: chunk ({ChunkX}, {ChunkZ}), resolution {Resolution}, checksum {Checksum}",
+                //     chunkX, chunkZ, resolution, uploadResult.Checksum);
             }
             catch (Exception ex)
             {

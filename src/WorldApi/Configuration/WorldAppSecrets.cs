@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace WorldApi.Configuration;
 
 /// <summary>
@@ -29,6 +31,14 @@ public class WorldAppSecrets
     /// Used for versioning terrain data and world configuration.
     /// </summary>
     public string WorldVersion { get; set; } = "world-v1";
+
+    /// <summary>
+    /// CloudFront distribution URL for serving chunks (optional).
+    /// If provided, API will redirect to CloudFront instead of streaming from S3.
+    /// Example: "https://d1234567890.cloudfront.net"
+    /// </summary>
+    [JsonPropertyName("cloudfrontUrl")]
+    public string? CloudfrontUrl { get; set; }
 
     /// <summary>
     /// Additional application settings can be added here without modifying infrastructure secrets.

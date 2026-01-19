@@ -73,13 +73,13 @@ var connectionString = $"Host={appSecrets.DbHost};Port={appSecrets.DbPort};Datab
 
 // Log successful secret retrieval (without exposing sensitive data)
 var logger = tempServiceProvider.GetRequiredService<ILogger<Program>>();
-logger.LogInformation("Successfully loaded secrets from AWS Secrets Manager");
-logger.LogInformation("RDS secret: username={Username}", rdsSecrets.Username);
-logger.LogInformation("App secret: database={Database}, host={Host}, port={Port}, worldVersion={WorldVersion}", appSecrets.Database, appSecrets.DbHost, appSecrets.DbPort, appSecrets.WorldVersion);
+// logger.LogInformation("Successfully loaded secrets from AWS Secrets Manager");
+// logger.LogInformation("RDS secret: username={Username}", rdsSecrets.Username);
+// logger.LogInformation("App secret: database={Database}, host={Host}, port={Port}, worldVersion={WorldVersion}, cloudfrontUrl={CloudfrontUrl}", appSecrets.Database, appSecrets.DbHost, appSecrets.DbPort, appSecrets.WorldVersion, appSecrets.CloudfrontUrl ?? "(not configured)");
 
 // Register application secrets as singleton for lifetime of the app
 builder.Services.AddSingleton(appSecrets);
-builder.Services.AddSingleton(new OptionsWrapper<WorldAppSecrets>(appSecrets));
+builder.Services.AddSingleton<IOptions<WorldAppSecrets>>(new OptionsWrapper<WorldAppSecrets>(appSecrets));
 
 // World services
 builder.Services.AddSingleton<WorldCoordinateService>();

@@ -22,7 +22,7 @@ public sealed class DemTileIndexInitializer : IHostedService
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Starting DEM tile index initialization...");
+        // _logger.LogInformation("Starting DEM tile index initialization...");
 
         try
         {
@@ -34,7 +34,7 @@ public sealed class DemTileIndexInitializer : IHostedService
                 _index.Add(tile);
             }
 
-            _logger.LogInformation("Loaded {TileCount} DEM tiles into index", _index.Count);
+            // _logger.LogInformation("Loaded {TileCount} DEM tiles into index", _index.Count);
         }
         catch (Exception ex)
         {

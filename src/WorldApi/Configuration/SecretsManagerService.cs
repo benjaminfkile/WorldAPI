@@ -34,7 +34,7 @@ public class SecretsManagerService
     {
         try
         {
-            _logger.LogInformation("Fetching RDS database secrets from AWS Secrets Manager: {SecretArn}", secretArn);
+            // _logger.LogInformation("Fetching RDS database secrets from AWS Secrets Manager: {SecretArn}", secretArn);
 
             var request = new GetSecretValueRequest
             {
@@ -48,7 +48,7 @@ public class SecretsManagerService
                 throw new InvalidOperationException("RDS secret value is empty or null");
             }
 
-            _logger.LogInformation("Successfully fetched RDS database secrets");
+            // _logger.LogInformation("Successfully fetched RDS database secrets");
 
             var secrets = JsonSerializer.Deserialize<RdsDbSecrets>(response.SecretString, new JsonSerializerOptions
             {
@@ -97,7 +97,7 @@ public class SecretsManagerService
     {
         try
         {
-            _logger.LogInformation("Fetching application secrets from AWS Secrets Manager: {SecretArn}", secretArn);
+            // _logger.LogInformation("Fetching application secrets from AWS Secrets Manager: {SecretArn}", secretArn);
 
             var request = new GetSecretValueRequest
             {
@@ -111,7 +111,9 @@ public class SecretsManagerService
                 throw new InvalidOperationException("Application secret value is empty or null");
             }
 
-            _logger.LogInformation("Successfully fetched application secrets");
+            // _logger.LogInformation("Successfully fetched application secrets");
+
+            // _logger.LogInformation("Raw secret JSON: {SecretJson}", response.SecretString);
 
             var secrets = JsonSerializer.Deserialize<WorldAppSecrets>(response.SecretString, new JsonSerializerOptions
             {
@@ -122,6 +124,8 @@ public class SecretsManagerService
             {
                 throw new InvalidOperationException("Failed to deserialize secrets into WorldAppSecrets");
             }
+
+            // _logger.LogInformation("Deserialized CloudfrontUrl: {CloudfrontUrl}", secrets.CloudfrontUrl ?? "(null)");
 
             // Validate required application secret fields
             if (string.IsNullOrEmpty(secrets.Database) || 

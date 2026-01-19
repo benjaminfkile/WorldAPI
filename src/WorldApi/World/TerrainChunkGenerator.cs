@@ -30,8 +30,8 @@ public sealed class TerrainChunkGenerator
 
     public async Task<TerrainChunk> GenerateAsync(int chunkX, int chunkZ, int resolution)
     {
-        _logger.LogInformation("[TRACE] GenerateAsync start: ChunkX={ChunkX}, ChunkZ={ChunkZ}, Resolution={Resolution}",
-            chunkX, chunkZ, resolution);
+        // _logger.LogInformation("[TRACE] GenerateAsync start: ChunkX={ChunkX}, ChunkZ={ChunkZ}, Resolution={Resolution}",
+        //     chunkX, chunkZ, resolution);
 
         // Step 1: Determine lat/lon bounds of the chunk
         var chunkOrigin = _coordinateService.GetChunkOriginLatLon(chunkX, chunkZ);
@@ -65,14 +65,14 @@ public sealed class TerrainChunkGenerator
             tileData!,
             _config.ChunkSizeMeters);
 
-        _logger.LogInformation("[TRACE] After SampleHeights: ChunkX={ChunkX}, ChunkZ={ChunkZ}, RawHeightsLength={RawHeightsLength}",
-            chunkX, chunkZ, rawHeights.Length);
+        // _logger.LogInformation("[TRACE] After SampleHeights: ChunkX={ChunkX}, ChunkZ={ChunkZ}, RawHeightsLength={RawHeightsLength}",
+        //     chunkX, chunkZ, rawHeights.Length);
 
         // Step 5: Normalize heights
         var normalized = HeightNormalizer.Normalize(rawHeights);
 
-        _logger.LogInformation("[TRACE] After Normalize: ChunkX={ChunkX}, ChunkZ={ChunkZ}, NormalizedHeightsLength={NormalizedHeightsLength}",
-            chunkX, chunkZ, normalized.Heights.Length);
+        // _logger.LogInformation("[TRACE] After Normalize: ChunkX={ChunkX}, ChunkZ={ChunkZ}, NormalizedHeightsLength={NormalizedHeightsLength}",
+        //     chunkX, chunkZ, normalized.Heights.Length);
 
         // Guard: ensure heights match (resolution + 1)^2 exactly
         int gridSize = resolution + 1;
@@ -98,8 +98,8 @@ public sealed class TerrainChunkGenerator
             MaxElevation = normalized.MaxElevation
         };
 
-        _logger.LogInformation("[TRACE] GenerateAsync complete: ChunkX={ChunkX}, ChunkZ={ChunkZ}, Resolution={Resolution}, FinalHeightsLength={FinalHeightsLength}",
-            chunkX, chunkZ, resolution, result.Heights.Length);
+        // _logger.LogInformation("[TRACE] GenerateAsync complete: ChunkX={ChunkX}, ChunkZ={ChunkZ}, Resolution={Resolution}, FinalHeightsLength={FinalHeightsLength}",
+        //     chunkX, chunkZ, resolution, result.Heights.Length);
 
         return result;
     }

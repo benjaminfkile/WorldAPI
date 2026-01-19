@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using WorldApi.Controllers;
+using WorldApi.Configuration;
 using WorldApi.World;
 using Amazon.S3.Model;
 
@@ -13,6 +15,7 @@ public class TerrainChunksControllerTests
     private readonly Mock<ITerrainChunkCoordinator> _mockCoordinator;
     private readonly Mock<ITerrainChunkReader> _mockReader;
     private readonly Mock<ILogger<TerrainChunksController>> _mockLogger;
+    private readonly Mock<IOptions<WorldAppSecrets>> _mockAppSecrets;
     private readonly TerrainChunksController _controller;
 
     public TerrainChunksControllerTests()
@@ -20,7 +23,16 @@ public class TerrainChunksControllerTests
         _mockCoordinator = new Mock<ITerrainChunkCoordinator>();
         _mockReader = new Mock<ITerrainChunkReader>();
         _mockLogger = new Mock<ILogger<TerrainChunksController>>();
-        _controller = new TerrainChunksController(_mockCoordinator.Object, _mockReader.Object, _mockLogger.Object);
+        _mockAppSecrets = new Mock<IOptions<WorldAppSecrets>>();
+        
+        // Default: no CloudFront URL (legacy streaming mode)
+        _mockAppSecrets.Setup(s => s.Value).Returns(new WorldAppSecrets { CloudfrontUrl = null });
+        
+        _controller = new TerrainChunksController(
+            _mockCoordinator.Object, 
+            _mockReader.Object, 
+            _mockAppSecrets.Object,
+            _mockLogger.Object);
         
         // Set up HttpContext for Response headers
         _controller.ControllerContext = new ControllerContext

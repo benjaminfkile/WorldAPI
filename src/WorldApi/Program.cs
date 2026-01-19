@@ -1,6 +1,23 @@
 using WorldApi.World;
+using WorldApi.Configuration;
 using Amazon.S3;
+using Amazon.SecretsManager;
 using Microsoft.Extensions.Options;
+
+// Load .env file for local development
+var envFile = FindEnvFile();
+if (envFile != null && File.Exists(envFile))
+{
+    foreach (var line in File.ReadAllLines(envFile))
+    {
+        if (!string.IsNullOrWhiteSpace(line) && !line.StartsWith("#"))
+        {
+            var parts = line.Split('=', 2);
+            if (parts.Length == 2)
+                Environment.SetEnvironmentVariable(parts[0].Trim(), parts[1].Trim());
+        }
+    }
+}
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,8 +30,56 @@ builder.Services.AddSwaggerGen();
 // Configuration
 builder.Services.Configure<WorldConfig>(builder.Configuration.GetSection("World"));
 
-// AWS S3
+// AWS Clients
 builder.Services.AddSingleton<IAmazonS3>(sp => new AmazonS3Client());
+builder.Services.AddSingleton<IAmazonSecretsManager>(sp => new AmazonSecretsManagerClient());
+
+// Secrets Manager Service
+builder.Services.AddSingleton<SecretsManagerService>();
+
+// Load secrets from AWS Secrets Manager at startup
+var awsRegion = builder.Configuration["AWS_REGION"] ?? Environment.GetEnvironmentVariable("AWS_REGION");
+var rdsSecretArn = builder.Configuration["AWS_RDS_SECRET_ARN"] ?? Environment.GetEnvironmentVariable("AWS_RDS_SECRET_ARN");
+var appSecretArn = builder.Configuration["AWS_APP_SECRET_ARN"] ?? Environment.GetEnvironmentVariable("AWS_APP_SECRET_ARN");
+
+if (string.IsNullOrEmpty(rdsSecretArn))
+{
+    throw new InvalidOperationException("AWS_RDS_SECRET_ARN environment variable is required");
+}
+
+if (string.IsNullOrEmpty(appSecretArn))
+{
+    throw new InvalidOperationException("AWS_APP_SECRET_ARN environment variable is required");
+}
+
+// Build a temporary service provider to resolve SecretsManagerService
+// Warning ASP0000 is expected here - we need to fetch secrets before the main DI container is built
+// This is a common pattern when loading configuration from external sources at startup
+#pragma warning disable ASP0000
+using var tempServiceProvider = builder.Services.BuildServiceProvider();
+var secretsManager = tempServiceProvider.GetRequiredService<SecretsManagerService>();
+
+// Fetch both secrets concurrently for better startup performance
+var rdsSecretsTask = secretsManager.GetRdsDbSecretsAsync(rdsSecretArn);
+var appSecretsTask = secretsManager.GetWorldAppSecretsAsync(appSecretArn);
+await Task.WhenAll(rdsSecretsTask, appSecretsTask);
+
+var rdsSecrets = await rdsSecretsTask;
+var appSecrets = await appSecretsTask;
+#pragma warning restore ASP0000
+
+// Build connection string using RDS credentials + application secrets (database, host, port)
+var connectionString = $"Host={appSecrets.DbHost};Port={appSecrets.DbPort};Database={appSecrets.Database};Username={rdsSecrets.Username};Password={rdsSecrets.Password}";
+
+// Log successful secret retrieval (without exposing sensitive data)
+var logger = tempServiceProvider.GetRequiredService<ILogger<Program>>();
+logger.LogInformation("Successfully loaded secrets from AWS Secrets Manager");
+logger.LogInformation("RDS secret: username={Username}", rdsSecrets.Username);
+logger.LogInformation("App secret: database={Database}, host={Host}, port={Port}, worldVersion={WorldVersion}", appSecrets.Database, appSecrets.DbHost, appSecrets.DbPort, appSecrets.WorldVersion);
+
+// Register application secrets as singleton for lifetime of the app
+builder.Services.AddSingleton(appSecrets);
+builder.Services.AddSingleton(new OptionsWrapper<WorldAppSecrets>(appSecrets));
 
 // World services
 builder.Services.AddSingleton<WorldCoordinateService>();
@@ -65,7 +130,7 @@ builder.Services.AddSingleton<TerrainChunkGenerator>(sp =>
 
 builder.Services.AddScoped<WorldChunkRepository>(sp =>
 {
-    var connectionString = builder.Configuration.GetConnectionString("WorldDb") ?? throw new InvalidOperationException("WorldDb connection string not configured");
+    // Use the connection string built from AWS Secrets Manager
     return new WorldChunkRepository(connectionString);
 });
 
@@ -106,3 +171,27 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+/// <summary>
+/// Search upward from current directory to find .env file
+/// </summary>
+static string? FindEnvFile()
+{
+    var currentDir = Directory.GetCurrentDirectory();
+    
+    // Search up to 5 levels up
+    for (int i = 0; i < 5; i++)
+    {
+        var envPath = Path.Combine(currentDir, ".env");
+        if (File.Exists(envPath))
+            return envPath;
+        
+        var parentDir = Directory.GetParent(currentDir)?.FullName;
+        if (parentDir == null)
+            break;
+        
+        currentDir = parentDir;
+    }
+    
+    return null;
+}

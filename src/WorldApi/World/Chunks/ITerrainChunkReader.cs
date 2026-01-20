@@ -1,6 +1,6 @@
 using Amazon.S3.Model;
 
-namespace WorldApi.World;
+namespace WorldApi.World.Chunks;
 
 public interface ITerrainChunkReader
 {

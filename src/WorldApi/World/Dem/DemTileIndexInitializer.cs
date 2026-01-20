@@ -1,4 +1,4 @@
-namespace WorldApi.World;
+namespace WorldApi.World.Dem;
 
 /// <summary>
 /// Background service that populates the DemTileIndex at application startup

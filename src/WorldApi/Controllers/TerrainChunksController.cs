@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
-using WorldApi.World;
+using WorldApi.World.Coordinates;
+using WorldApi.World.Chunks;
 using WorldApi.Configuration;
 using Amazon.S3.Model;
 using Microsoft.Extensions.Options;

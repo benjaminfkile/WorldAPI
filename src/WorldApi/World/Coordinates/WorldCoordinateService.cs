@@ -1,4 +1,7 @@
 using Microsoft.Extensions.Options;
+using WorldApi.World.Config;
+
+namespace WorldApi.World.Coordinates;
 
 // STEP 6.2 — World ↔ Earth Coordinate Mapping
 //

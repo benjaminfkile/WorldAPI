@@ -1,4 +1,6 @@
-namespace WorldApi.World;
+using WorldApi.World.Chunks;
+
+namespace WorldApi.World.Dem;
 
 public static class DemSampler
 {

@@ -1,4 +1,4 @@
-namespace WorldApi.World;
+namespace WorldApi.World.Chunks;
 
 /// <summary>
 /// Binary serializer for terrain chunk data.

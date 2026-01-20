@@ -2,8 +2,9 @@ using Amazon.S3;
 using Amazon.S3.Model;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
+using WorldApi.World.Config;
 
-namespace WorldApi.World;
+namespace WorldApi.World.Chunks;
 
 public readonly record struct ChunkUploadResult(string S3Key, string Checksum);
 

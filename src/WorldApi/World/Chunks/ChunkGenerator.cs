@@ -1,4 +1,4 @@
-namespace WorldApi.World;
+namespace WorldApi.World.Chunks;
 
 public static class ChunkGenerator
 {

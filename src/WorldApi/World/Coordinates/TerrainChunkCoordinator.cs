@@ -1,8 +1,10 @@
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
 using System.Security.Cryptography;
+using WorldApi.World.Config;
+using WorldApi.World.Chunks;
 
-namespace WorldApi.World;
+namespace WorldApi.World.Coordinates;
 
 public class TerrainChunkCoordinator : ITerrainChunkCoordinator
 {

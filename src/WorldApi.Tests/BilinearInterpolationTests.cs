@@ -1,4 +1,4 @@
-using WorldApi.World;
+using WorldApi.World.Chunks;
 
 namespace WorldApi.Tests;
 

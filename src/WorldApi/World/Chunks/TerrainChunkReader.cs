@@ -1,7 +1,7 @@
 using Amazon.S3;
 using Amazon.S3.Model;
 
-namespace WorldApi.World;
+namespace WorldApi.World.Chunks;
 
 public sealed class TerrainChunkReader : ITerrainChunkReader
 {

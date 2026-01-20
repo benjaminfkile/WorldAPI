@@ -5,7 +5,8 @@ using Microsoft.Extensions.Options;
 using Moq;
 using WorldApi.Controllers;
 using WorldApi.Configuration;
-using WorldApi.World;
+using WorldApi.World.Coordinates;
+using WorldApi.World.Chunks;
 using Amazon.S3.Model;
 
 namespace WorldApi.Tests;
@@ -60,6 +61,21 @@ public class TerrainChunksControllerTests
         _mockCoordinator
             .Setup(c => c.GetChunkStatusAsync(chunkX, chunkZ, resolution, worldVersion, It.IsAny<string>()))
             .ReturnsAsync(ChunkStatus.Ready);
+
+        _mockCoordinator
+            .Setup(c => c.GetChunkMetadataAsync(chunkX, chunkZ, resolution, It.IsAny<string>()))
+            .ReturnsAsync(new WorldChunkMetadata 
+            { 
+                ChunkX = chunkX, 
+                ChunkZ = chunkZ, 
+                Resolution = resolution,
+                WorldVersion = worldVersion,
+                Layer = "terrain",
+                S3Key = "test-key",
+                Checksum = "test-checksum",
+                Status = ChunkStatus.Ready,
+                GeneratedAt = DateTimeOffset.UtcNow
+            });
 
         _mockReader
             .Setup(r => r.GetStreamAsync(chunkX, chunkZ, resolution, worldVersion))
@@ -165,6 +181,21 @@ public class TerrainChunksControllerTests
             .Setup(c => c.GetChunkStatusAsync(chunkX, chunkZ, resolution, worldVersion, It.IsAny<string>()))
             .ReturnsAsync(ChunkStatus.Ready);
 
+        _mockCoordinator
+            .Setup(c => c.GetChunkMetadataAsync(chunkX, chunkZ, resolution, It.IsAny<string>()))
+            .ReturnsAsync(new WorldChunkMetadata 
+            { 
+                ChunkX = chunkX, 
+                ChunkZ = chunkZ, 
+                Resolution = resolution,
+                WorldVersion = worldVersion,
+                Layer = "terrain",
+                S3Key = "test-key",
+                Checksum = "test-checksum",
+                Status = ChunkStatus.Ready,
+                GeneratedAt = DateTimeOffset.UtcNow
+            });
+
         _mockReader
             .Setup(r => r.GetStreamAsync(chunkX, chunkZ, resolution, worldVersion))
             .ReturnsAsync(mockResponse);
@@ -195,7 +226,20 @@ public class TerrainChunksControllerTests
         _mockCoordinator
             .Setup(c => c.GetChunkStatusAsync(chunkX, chunkZ, resolution, worldVersion, It.IsAny<string>()))
             .ReturnsAsync(ChunkStatus.Ready);
-
+        _mockCoordinator
+            .Setup(c => c.GetChunkMetadataAsync(chunkX, chunkZ, resolution, It.IsAny<string>()))
+            .ReturnsAsync(new WorldChunkMetadata 
+            { 
+                ChunkX = chunkX, 
+                ChunkZ = chunkZ, 
+                Resolution = resolution,
+                WorldVersion = worldVersion,
+                Layer = "terrain",
+                S3Key = "test-key",
+                Checksum = "test-checksum",
+                Status = ChunkStatus.Ready,
+                GeneratedAt = DateTimeOffset.UtcNow
+            });
         _mockReader
             .Setup(r => r.GetStreamAsync(chunkX, chunkZ, resolution, worldVersion))
             .ReturnsAsync(mockResponse);
@@ -226,6 +270,21 @@ public class TerrainChunksControllerTests
         _mockCoordinator
             .Setup(c => c.GetChunkStatusAsync(chunkX, chunkZ, resolution, worldVersion, It.IsAny<string>()))
             .ReturnsAsync(ChunkStatus.Ready);
+
+        _mockCoordinator
+            .Setup(c => c.GetChunkMetadataAsync(chunkX, chunkZ, resolution, It.IsAny<string>()))
+            .ReturnsAsync(new WorldChunkMetadata 
+            { 
+                ChunkX = chunkX, 
+                ChunkZ = chunkZ, 
+                Resolution = resolution,
+                WorldVersion = worldVersion,
+                Layer = "terrain",
+                S3Key = "test-key",
+                Checksum = "test-checksum",
+                Status = ChunkStatus.Ready,
+                GeneratedAt = DateTimeOffset.UtcNow
+            });
 
         _mockReader
             .Setup(r => r.GetStreamAsync(chunkX, chunkZ, resolution, worldVersion))
@@ -282,6 +341,21 @@ public class TerrainChunksControllerTests
         _mockCoordinator
             .Setup(c => c.GetChunkStatusAsync(chunkX, chunkZ, resolution, worldVersion, It.IsAny<string>()))
             .ReturnsAsync(ChunkStatus.Ready);
+
+        _mockCoordinator
+            .Setup(c => c.GetChunkMetadataAsync(chunkX, chunkZ, resolution, It.IsAny<string>()))
+            .ReturnsAsync(new WorldChunkMetadata 
+            { 
+                ChunkX = chunkX, 
+                ChunkZ = chunkZ, 
+                Resolution = resolution,
+                WorldVersion = worldVersion,
+                Layer = "terrain",
+                S3Key = "test-key",
+                Checksum = "test-checksum",
+                Status = ChunkStatus.Ready,
+                GeneratedAt = DateTimeOffset.UtcNow
+            });
 
         _mockReader
             .Setup(r => r.GetStreamAsync(chunkX, chunkZ, resolution, worldVersion))

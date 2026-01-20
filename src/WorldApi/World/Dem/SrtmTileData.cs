@@ -1,10 +1,12 @@
-namespace WorldApi.World;
+namespace WorldApi.World.Dem;
 
-public sealed record DemTile
+public sealed record SrtmTileData
 {
     public required double MinLatitude { get; init; }
     public required double MaxLatitude { get; init; }
     public required double MinLongitude { get; init; }
     public required double MaxLongitude { get; init; }
-    public required string S3Key { get; init; }
+    public required int Width { get; init; }
+    public required int Height { get; init; }
+    public required short[] Elevations { get; init; }
 }

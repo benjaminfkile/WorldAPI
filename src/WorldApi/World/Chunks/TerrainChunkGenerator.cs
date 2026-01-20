@@ -1,7 +1,10 @@
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
+using WorldApi.World.Config;
+using WorldApi.World.Coordinates;
+using WorldApi.World.Dem;
 
-namespace WorldApi.World;
+namespace WorldApi.World.Chunks;
 
 public sealed class TerrainChunkGenerator
 {

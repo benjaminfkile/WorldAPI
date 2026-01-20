@@ -1,7 +1,7 @@
 using Npgsql;
 using System.Data;
 
-namespace WorldApi.World;
+namespace WorldApi.World.Chunks;
 
 public sealed class WorldChunkRepository
 {

@@ -1,4 +1,4 @@
-namespace WorldApi.World;
+namespace WorldApi.World.Dem;
 
 public sealed class DemTileIndex
 {

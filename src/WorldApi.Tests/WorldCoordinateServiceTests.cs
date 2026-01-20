@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
-using WorldApi.World;
+using WorldApi.World.Config;
+using WorldApi.World.Coordinates;
 
 namespace WorldApi.Tests;
 

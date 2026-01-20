@@ -1,4 +1,4 @@
-namespace WorldApi.World;
+namespace WorldApi.World.Dem;
 
 public readonly record struct GridCoordinates(double X, double Y);
 

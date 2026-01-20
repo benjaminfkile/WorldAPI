@@ -1,4 +1,6 @@
-namespace WorldApi.World;
+using WorldApi.World.Chunks;
+
+namespace WorldApi.World.Coordinates;
 
 public interface ITerrainChunkCoordinator
 {

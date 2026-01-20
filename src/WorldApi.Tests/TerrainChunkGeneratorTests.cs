@@ -1,5 +1,8 @@
 using Microsoft.Extensions.Options;
-using WorldApi.World;
+using WorldApi.World.Config;
+using WorldApi.World.Coordinates;
+using WorldApi.World.Dem;
+using WorldApi.World.Chunks;
 using Moq;
 using Microsoft.Extensions.Logging;
 

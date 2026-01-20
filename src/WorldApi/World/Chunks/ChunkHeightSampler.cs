@@ -1,4 +1,7 @@
-namespace WorldApi.World;
+using WorldApi.World.Coordinates;
+using WorldApi.World.Dem;
+
+namespace WorldApi.World.Chunks;
 
 public static class ChunkHeightSampler
 {

@@ -1,4 +1,7 @@
-using WorldApi.World;
+using WorldApi.World.Config;
+using WorldApi.World.Coordinates;
+using WorldApi.World.Dem;
+using WorldApi.World.Chunks;
 using WorldApi.Configuration;
 using Amazon.S3;
 using Amazon.SecretsManager;

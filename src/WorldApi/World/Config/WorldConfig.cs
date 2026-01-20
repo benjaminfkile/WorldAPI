@@ -1,3 +1,5 @@
+namespace WorldApi.World.Config;
+
 public sealed class WorldConfig
 {
     public string Version { get; init; } = default!;

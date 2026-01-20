@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using WorldApi.World;
+using WorldApi.World.Chunks;
 
 namespace WorldApi.Controllers;
 

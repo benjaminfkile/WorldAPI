@@ -1,4 +1,4 @@
-using WorldApi.World;
+using WorldApi.World.Dem;
 
 namespace WorldApi.Tests;
 

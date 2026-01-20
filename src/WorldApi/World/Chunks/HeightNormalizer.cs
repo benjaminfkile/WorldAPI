@@ -1,4 +1,4 @@
-namespace WorldApi.World;
+namespace WorldApi.World.Chunks;
 
 public readonly record struct NormalizedHeights(
     float[] Heights,

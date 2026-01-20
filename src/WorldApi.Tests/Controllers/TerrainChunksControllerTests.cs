@@ -9,7 +9,7 @@ using WorldApi.World.Coordinates;
 using WorldApi.World.Chunks;
 using Amazon.S3.Model;
 
-namespace WorldApi.Tests;
+namespace WorldApi.Tests.Controllers;
 
 public class TerrainChunksControllerTests
 {

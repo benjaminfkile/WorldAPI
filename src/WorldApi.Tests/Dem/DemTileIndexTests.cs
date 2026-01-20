@@ -1,6 +1,6 @@
 using WorldApi.World.Dem;
 
-namespace WorldApi.Tests;
+namespace WorldApi.Tests.Dem;
 
 public class DemTileIndexTests
 {

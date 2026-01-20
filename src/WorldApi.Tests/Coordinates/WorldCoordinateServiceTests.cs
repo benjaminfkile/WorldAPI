@@ -2,7 +2,7 @@ using Microsoft.Extensions.Options;
 using WorldApi.World.Config;
 using WorldApi.World.Coordinates;
 
-namespace WorldApi.Tests;
+namespace WorldApi.Tests.Coordinates;
 
 public class WorldCoordinateServiceTests
 {

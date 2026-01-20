@@ -6,7 +6,7 @@ using WorldApi.World.Chunks;
 using Moq;
 using Microsoft.Extensions.Logging;
 
-namespace WorldApi.Tests;
+namespace WorldApi.Tests.Chunks;
 
 public class TerrainChunkGeneratorTests
 {

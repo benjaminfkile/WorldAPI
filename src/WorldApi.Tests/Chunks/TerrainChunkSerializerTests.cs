@@ -1,6 +1,6 @@
 using WorldApi.World.Chunks;
 
-namespace WorldApi.Tests;
+namespace WorldApi.Tests.Chunks;
 
 public class TerrainChunkSerializerTests
 {

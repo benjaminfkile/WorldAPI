@@ -41,6 +41,56 @@ public class WorldAppSecrets
     public string? CloudfrontUrl { get; set; }
 
     /// <summary>
+    /// Flag indicating whether to use CloudFront for serving chunks.
+    /// </summary>
+    [JsonPropertyName("useCloudfront")]
+    public string? UseCloudfront { get; set; }
+
+    /// <summary>
+    /// S3 bucket name used for world data storage. Moved from appsettings.json into app-managed secrets.
+    /// </summary>
+    [JsonPropertyName("s3BucketName")]
+    public string? S3BucketName { get; set; }
+
+    /// <summary>
+    /// Flag to use local S3 (MinIO) instead of AWS S3. When true, CloudFront is disabled.
+    /// Accepts string values "true"/"false" (case-insensitive).
+    /// </summary>
+    [JsonPropertyName("useLocalS3")]
+    public string? UseLocalS3 { get; set; }
+
+    /// <summary>
+    /// Local S3 endpoint URL (e.g., "http://localhost:9000" for MinIO).
+    /// Only used when UseLocalS3 is true.
+    /// </summary>
+    [JsonPropertyName("localS3Endpoint")]
+    public string? LocalS3Endpoint { get; set; }
+
+    /// <summary>
+    /// Local S3 access key for MinIO. Only used when UseLocalS3 is true.
+    /// </summary>
+    [JsonPropertyName("localS3AccessKey")]
+    public string? LocalS3AccessKey { get; set; }
+
+    /// <summary>
+    /// Local S3 secret key for MinIO. Only used when UseLocalS3 is true.
+    /// </summary>
+    [JsonPropertyName("localS3SecretKey")]
+    public string? LocalS3SecretKey { get; set; }
+
+    /// <summary>
+    /// Local database username. Only used when UseLocalS3 is true.
+    /// </summary>
+    [JsonPropertyName("localDbUsername")]
+    public string? LocalDbUsername { get; set; }
+
+    /// <summary>
+    /// Local database password. Only used when UseLocalS3 is true.
+    /// </summary>
+    [JsonPropertyName("localDbPassword")]
+    public string? LocalDbPassword { get; set; }
+
+    /// <summary>
     /// Additional application settings can be added here without modifying infrastructure secrets.
     /// </summary>
 }

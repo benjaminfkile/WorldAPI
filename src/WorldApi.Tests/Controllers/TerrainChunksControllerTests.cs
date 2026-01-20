@@ -397,4 +397,61 @@ public class TerrainChunksControllerTests
             c => c.GetChunkStatusAsync(chunkX, chunkZ, resolution, worldVersion2, It.IsAny<string>()),
             Times.Once);
     }
+
+    [Fact]
+    public async Task GetTerrainChunk_ReadyChunk_WithCloudfrontFlagTrue_RedirectsToCloudfront()
+    {
+        // Arrange
+        var mockCoordinator = new Mock<ITerrainChunkCoordinator>();
+        var mockReader = new Mock<ITerrainChunkReader>();
+        var mockLogger = new Mock<ILogger<TerrainChunksController>>();
+        var mockAppSecrets = new Mock<IOptions<WorldAppSecrets>>();
+
+        mockAppSecrets.Setup(s => s.Value).Returns(new WorldAppSecrets
+        {
+            CloudfrontUrl = "https://d123.cloudfront.net",
+            UseCloudfront = "true"
+        });
+
+        int chunkX = 2, chunkZ = 3, resolution = 64;
+        string worldVersion = "v1";
+
+        mockCoordinator
+            .Setup(c => c.GetChunkStatusAsync(chunkX, chunkZ, resolution, worldVersion, It.IsAny<string>()))
+            .ReturnsAsync(ChunkStatus.Ready);
+
+        mockCoordinator
+            .Setup(c => c.GetChunkMetadataAsync(chunkX, chunkZ, resolution, It.IsAny<string>()))
+            .ReturnsAsync(new WorldChunkMetadata
+            {
+                ChunkX = chunkX,
+                ChunkZ = chunkZ,
+                Resolution = resolution,
+                WorldVersion = worldVersion,
+                Layer = "terrain",
+                S3Key = "chunks/terrain/64/2/3.bin",
+                Checksum = "abc",
+                Status = ChunkStatus.Ready,
+                GeneratedAt = DateTimeOffset.UtcNow
+            });
+
+        var controller = new TerrainChunksController(
+            mockCoordinator.Object,
+            mockReader.Object,
+            mockAppSecrets.Object,
+            mockLogger.Object);
+
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext()
+        };
+
+        // Act
+        var result = await controller.GetTerrainChunk(worldVersion, resolution, chunkX, chunkZ, CancellationToken.None);
+
+        // Assert
+        var redirect = Assert.IsType<RedirectResult>(result);
+        Assert.Equal("https://d123.cloudfront.net/chunks/terrain/64/2/3.bin", redirect.Url);
+        Assert.Equal("public, max-age=31536000, immutable", controller.Response.Headers.CacheControl.ToString());
+    }
 }

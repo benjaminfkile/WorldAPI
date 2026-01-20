@@ -111,9 +111,9 @@ public class SecretsManagerService
                 throw new InvalidOperationException("Application secret value is empty or null");
             }
 
-            // _logger.LogInformation("Successfully fetched application secrets");
+            _logger.LogInformation("Successfully fetched application secrets");
 
-            // _logger.LogInformation("Raw secret JSON: {SecretJson}", response.SecretString);
+            _logger.LogInformation("Raw secret JSON: {SecretJson}", response.SecretString);
 
             var secrets = JsonSerializer.Deserialize<WorldAppSecrets>(response.SecretString, new JsonSerializerOptions
             {

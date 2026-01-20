@@ -14,6 +14,8 @@ public sealed class TerrainChunksController : ControllerBase
     private readonly ITerrainChunkReader _reader;
     private readonly ILogger<TerrainChunksController> _logger;
     private readonly string? _cloudfrontUrl;
+    private readonly bool _useCloudfront;
+    private readonly bool _useLocalS3;
 
     public TerrainChunksController(
         ITerrainChunkCoordinator coordinator,
@@ -25,6 +27,11 @@ public sealed class TerrainChunksController : ControllerBase
         _reader = reader;
         _logger = logger;
         _cloudfrontUrl = appSecrets.Value.CloudfrontUrl;
+        // Parse UseLocalS3 string to bool (accepts "true"/"false", case-insensitive)
+        _useLocalS3 = bool.TryParse(appSecrets.Value.UseLocalS3, out var localS3Parsed) && localS3Parsed;
+        // Use CloudFront only if flag is explicitly true and local S3 is not enabled
+        var useCloudfrontRaw = appSecrets.Value.UseCloudfront;
+        _useCloudfront = !_useLocalS3 && (bool.TryParse(useCloudfrontRaw, out var parsed) && parsed);
     }
 
     /// <summary>
@@ -63,7 +70,7 @@ public sealed class TerrainChunksController : ControllerBase
                     chunkX, chunkZ, resolution);
                 status = ChunkStatus.NotFound;
             }
-            else if (!string.IsNullOrEmpty(_cloudfrontUrl))
+            else if (_useCloudfront && !string.IsNullOrEmpty(_cloudfrontUrl))
             {
                 // CloudFront configured - redirect to CDN edge
                 string cloudfrontChunkUrl = $"{_cloudfrontUrl.TrimEnd('/')}/{metadata.S3Key}";

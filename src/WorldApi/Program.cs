@@ -34,6 +34,7 @@ builder.Services.AddSwaggerGen();
 builder.Services.Configure<WorldConfig>(builder.Configuration.GetSection("World"));
 
 // AWS Clients
+// Placeholder - will be replaced after secrets are loaded
 builder.Services.AddSingleton<IAmazonS3>(sp => new AmazonS3Client());
 builder.Services.AddSingleton<IAmazonSecretsManager>(sp => new AmazonSecretsManagerClient());
 
@@ -62,27 +63,71 @@ if (string.IsNullOrEmpty(appSecretArn))
 using var tempServiceProvider = builder.Services.BuildServiceProvider();
 var secretsManager = tempServiceProvider.GetRequiredService<SecretsManagerService>();
 
-// Fetch both secrets concurrently for better startup performance
-var rdsSecretsTask = secretsManager.GetRdsDbSecretsAsync(rdsSecretArn);
-var appSecretsTask = secretsManager.GetWorldAppSecretsAsync(appSecretArn);
-await Task.WhenAll(rdsSecretsTask, appSecretsTask);
+// Fetch app secrets first to check if we're using local mode
+var appSecrets = await secretsManager.GetWorldAppSecretsAsync(appSecretArn);
+var useLocalS3 = bool.TryParse(appSecrets.UseLocalS3, out var parsed) && parsed;
 
-var rdsSecrets = await rdsSecretsTask;
-var appSecrets = await appSecretsTask;
+string connectionString;
+
+if (useLocalS3)
+{
+    // Local mode: use local DB credentials from app secret
+    var localUsername = appSecrets.LocalDbUsername ?? "postgres";
+    var localPassword = appSecrets.LocalDbPassword ?? "postgres";
+    connectionString = $"Host={appSecrets.DbHost};Port={appSecrets.DbPort};Database={appSecrets.Database};Username={localUsername};Password={localPassword}";
+    
+    var logger = tempServiceProvider.GetRequiredService<ILogger<Program>>();
+    logger.LogInformation("Using local database credentials (username: {Username})", localUsername);
+}
+else
+{
+    // Production mode: fetch RDS secret for credentials
+    var rdsSecrets = await secretsManager.GetRdsDbSecretsAsync(rdsSecretArn);
+    connectionString = $"Host={appSecrets.DbHost};Port={appSecrets.DbPort};Database={appSecrets.Database};Username={rdsSecrets.Username};Password={rdsSecrets.Password}";
+}
+
 #pragma warning restore ASP0000
-
-// Build connection string using RDS credentials + application secrets (database, host, port)
-var connectionString = $"Host={appSecrets.DbHost};Port={appSecrets.DbPort};Database={appSecrets.Database};Username={rdsSecrets.Username};Password={rdsSecrets.Password}";
-
-// Log successful secret retrieval (without exposing sensitive data)
-var logger = tempServiceProvider.GetRequiredService<ILogger<Program>>();
-// logger.LogInformation("Successfully loaded secrets from AWS Secrets Manager");
-// logger.LogInformation("RDS secret: username={Username}", rdsSecrets.Username);
-// logger.LogInformation("App secret: database={Database}, host={Host}, port={Port}, worldVersion={WorldVersion}, cloudfrontUrl={CloudfrontUrl}", appSecrets.Database, appSecrets.DbHost, appSecrets.DbPort, appSecrets.WorldVersion, appSecrets.CloudfrontUrl ?? "(not configured)");
 
 // Register application secrets as singleton for lifetime of the app
 builder.Services.AddSingleton(appSecrets);
 builder.Services.AddSingleton<IOptions<WorldAppSecrets>>(new OptionsWrapper<WorldAppSecrets>(appSecrets));
+
+// Configure S3 client based on secrets (after secrets are loaded)
+builder.Services.AddSingleton<IAmazonS3>(sp =>
+{
+    // Parse UseLocalS3 string to bool (accepts "true"/"false", case-insensitive)
+    var useLocalS3 = bool.TryParse(appSecrets.UseLocalS3, out var parsed) && parsed;
+    
+    if (useLocalS3)
+    {
+        // Configure client for local MinIO (or compatible) endpoint
+        var endpoint = appSecrets.LocalS3Endpoint ?? "http://localhost:9000";
+        
+        // Ensure endpoint has a scheme (http:// or https://)
+        if (!endpoint.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && 
+            !endpoint.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            endpoint = $"http://{endpoint}";
+        }
+        
+        var s3Config = new AmazonS3Config
+        {
+            ServiceURL = endpoint,
+            ForcePathStyle = true
+        };
+
+        if (!string.IsNullOrEmpty(appSecrets.LocalS3AccessKey) && !string.IsNullOrEmpty(appSecrets.LocalS3SecretKey))
+        {
+            var creds = new Amazon.Runtime.BasicAWSCredentials(appSecrets.LocalS3AccessKey, appSecrets.LocalS3SecretKey);
+            return new AmazonS3Client(creds, s3Config);
+        }
+
+        return new AmazonS3Client(s3Config);
+    }
+
+    // Default AWS S3 client (uses EC2 role or environment credentials)
+    return new AmazonS3Client();
+});
 
 // World services
 builder.Services.AddSingleton<WorldCoordinateService>();
@@ -93,28 +138,32 @@ builder.Services.AddSingleton<DemTileIndex>();
 builder.Services.AddSingleton<DemTileIndexBuilder>(sp =>
 {
     var s3Client = sp.GetRequiredService<IAmazonS3>();
-    var bucketName = builder.Configuration["AWS:S3:BucketName"] ?? throw new InvalidOperationException("AWS:S3:BucketName not configured");
+    var appSecrets = sp.GetRequiredService<IOptions<WorldAppSecrets>>().Value;
+    var bucketName = appSecrets.S3BucketName ?? throw new InvalidOperationException("S3 bucket name not configured in app secrets (s3BucketName)");
     return new DemTileIndexBuilder(s3Client, bucketName);
 });
 
 builder.Services.AddSingleton<HgtTileLoader>(sp =>
 {
     var s3Client = sp.GetRequiredService<IAmazonS3>();
-    var bucketName = builder.Configuration["AWS:S3:BucketName"] ?? throw new InvalidOperationException("AWS:S3:BucketName not configured");
+    var appSecrets = sp.GetRequiredService<IOptions<WorldAppSecrets>>().Value;
+    var bucketName = appSecrets.S3BucketName ?? throw new InvalidOperationException("S3 bucket name not configured in app secrets (s3BucketName)");
     return new HgtTileLoader(s3Client, bucketName);
 });
 
 builder.Services.AddSingleton<ITerrainChunkReader>(sp =>
 {
     var s3Client = sp.GetRequiredService<IAmazonS3>();
-    var bucketName = builder.Configuration["AWS:S3:BucketName"] ?? throw new InvalidOperationException("AWS:S3:BucketName not configured");
+    var appSecrets = sp.GetRequiredService<IOptions<WorldAppSecrets>>().Value;
+    var bucketName = appSecrets.S3BucketName ?? throw new InvalidOperationException("S3 bucket name not configured in app secrets (s3BucketName)");
     return new TerrainChunkReader(s3Client, bucketName);
 });
 
 builder.Services.AddSingleton<TerrainChunkWriter>(sp =>
 {
     var s3Client = sp.GetRequiredService<IAmazonS3>();
-    var bucketName = builder.Configuration["AWS:S3:BucketName"] ?? throw new InvalidOperationException("AWS:S3:BucketName not configured");
+    var appSecrets = sp.GetRequiredService<IOptions<WorldAppSecrets>>().Value;
+    var bucketName = appSecrets.S3BucketName ?? throw new InvalidOperationException("S3 bucket name not configured in app secrets (s3BucketName)");
     var config = sp.GetRequiredService<IOptions<WorldConfig>>();
     var logger = sp.GetRequiredService<ILogger<TerrainChunkWriter>>();
     return new TerrainChunkWriter(s3Client, bucketName, config, logger);

@@ -29,9 +29,13 @@ public sealed class TerrainChunksController : ControllerBase
         _cloudfrontUrl = appSecrets.Value.CloudfrontUrl;
         // Parse UseLocalS3 string to bool (accepts "true"/"false", case-insensitive)
         _useLocalS3 = bool.TryParse(appSecrets.Value.UseLocalS3, out var localS3Parsed) && localS3Parsed;
-        // Use CloudFront only if flag is explicitly true and local S3 is not enabled
+        // Use CloudFront if:
+        // 1. useLocalS3 is false/missing AND
+        // 2. (cloudfrontUrl is set OR useCloudfront is explicitly "true")
+        // This allows cloudfrontUrl alone to enable CloudFront, or useCloudfront can explicitly disable it
         var useCloudfrontRaw = appSecrets.Value.UseCloudfront;
-        _useCloudfront = !_useLocalS3 && (bool.TryParse(useCloudfrontRaw, out var parsed) && parsed);
+        var cloudfrontExplicitlyDisabled = bool.TryParse(useCloudfrontRaw, out var parsed) && !parsed;
+        _useCloudfront = !_useLocalS3 && !cloudfrontExplicitlyDisabled && !string.IsNullOrEmpty(_cloudfrontUrl);
     }
 
     /// <summary>

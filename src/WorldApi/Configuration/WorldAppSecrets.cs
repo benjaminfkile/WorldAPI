@@ -27,12 +27,6 @@ public class WorldAppSecrets
     public string DbPort { get; set; } = "5432";
 
     /// <summary>
-    /// World version identifier (e.g., "world-v1").
-    /// Used for versioning terrain data and world configuration.
-    /// </summary>
-    public string WorldVersion { get; set; } = "world-v1";
-
-    /// <summary>
     /// CloudFront distribution URL for serving chunks (optional).
     /// If provided, API will redirect to CloudFront instead of streaming from S3.
     /// Example: "https://d1234567890.cloudfront.net"

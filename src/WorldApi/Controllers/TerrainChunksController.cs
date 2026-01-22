@@ -12,6 +12,7 @@ public sealed class TerrainChunksController : ControllerBase
 {
     private readonly ITerrainChunkCoordinator _coordinator;
     private readonly ITerrainChunkReader _reader;
+    private readonly IWorldVersionService _worldVersionService;
     private readonly ILogger<TerrainChunksController> _logger;
     private readonly string? _cloudfrontUrl;
     private readonly bool _useCloudfront;
@@ -20,11 +21,13 @@ public sealed class TerrainChunksController : ControllerBase
     public TerrainChunksController(
         ITerrainChunkCoordinator coordinator,
         ITerrainChunkReader reader,
+        IWorldVersionService worldVersionService,
         IOptions<WorldAppSecrets> appSecrets,
         ILogger<TerrainChunksController> logger)
     {
         _coordinator = coordinator;
         _reader = reader;
+        _worldVersionService = worldVersionService;
         _logger = logger;
         _cloudfrontUrl = appSecrets.Value.CloudfrontUrl;
         // Parse UseLocalS3 string to bool (accepts "true"/"false", case-insensitive)
@@ -49,6 +52,27 @@ public sealed class TerrainChunksController : ControllerBase
         int chunkZ,
         CancellationToken cancellationToken = default)
     {
+        // Validate world version exists in database
+        var worldVersionInfo = await _worldVersionService.GetWorldVersionAsync(worldVersion);
+        
+        if (worldVersionInfo == null)
+        {
+            // World version not found in database
+            _logger.LogWarning(
+                "Terrain chunk request for unknown world version: {WorldVersion}",
+                worldVersion);
+            return NotFound(new { error = $"World version '{worldVersion}' not found" });
+        }
+
+        if (!worldVersionInfo.IsActive)
+        {
+            // World version exists but is not active
+            _logger.LogWarning(
+                "Terrain chunk request for inactive world version: {WorldVersion}",
+                worldVersion);
+            return StatusCode(410, new { error = $"World version '{worldVersion}' is no longer available" });
+        }
+
         // _logger.LogInformation("[DEBUG] CloudFront URL configured: {CloudfrontUrl}", _cloudfrontUrl ?? "(null)");
         
         // Check chunk status via coordinator
@@ -66,7 +90,7 @@ public sealed class TerrainChunksController : ControllerBase
             //     chunkX, chunkZ, resolution, worldVersion, "hit");
 
             // Get chunk metadata for S3 key
-            var metadata = await _coordinator.GetChunkMetadataAsync(chunkX, chunkZ, resolution);
+            var metadata = await _coordinator.GetChunkMetadataAsync(chunkX, chunkZ, resolution, worldVersion);
             if (metadata == null)
             {
                 _logger.LogWarning(

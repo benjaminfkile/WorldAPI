@@ -41,6 +41,13 @@ builder.Services.AddSingleton<IAmazonSecretsManager>(sp => new AmazonSecretsMana
 // Secrets Manager Service
 builder.Services.AddSingleton<SecretsManagerService>();
 
+// World Version Service
+builder.Services.AddSingleton<IWorldVersionService>(sp =>
+{
+    // Will be initialized after connection string is built
+    return new WorldVersionService("");
+});
+
 // Load secrets from AWS Secrets Manager at startup
 var awsRegion = builder.Configuration["AWS_REGION"] ?? Environment.GetEnvironmentVariable("AWS_REGION");
 var rdsSecretArn = builder.Configuration["AWS_RDS_SECRET_ARN"] ?? Environment.GetEnvironmentVariable("AWS_RDS_SECRET_ARN");
@@ -91,6 +98,12 @@ else
 // Register application secrets as singleton for lifetime of the app
 builder.Services.AddSingleton(appSecrets);
 builder.Services.AddSingleton<IOptions<WorldAppSecrets>>(new OptionsWrapper<WorldAppSecrets>(appSecrets));
+
+// Update WorldVersionService with connection string
+builder.Services.AddSingleton<IWorldVersionService>(sp =>
+{
+    return new WorldVersionService(connectionString);
+});
 
 // Configure S3 client based on secrets (after secrets are loaded)
 builder.Services.AddSingleton<IAmazonS3>(sp =>
@@ -164,9 +177,8 @@ builder.Services.AddSingleton<TerrainChunkWriter>(sp =>
     var s3Client = sp.GetRequiredService<IAmazonS3>();
     var appSecrets = sp.GetRequiredService<IOptions<WorldAppSecrets>>().Value;
     var bucketName = appSecrets.S3BucketName ?? throw new InvalidOperationException("S3 bucket name not configured in app secrets (s3BucketName)");
-    var config = sp.GetRequiredService<IOptions<WorldConfig>>();
     var logger = sp.GetRequiredService<ILogger<TerrainChunkWriter>>();
-    return new TerrainChunkWriter(s3Client, bucketName, config, logger);
+    return new TerrainChunkWriter(s3Client, bucketName, logger);
 });
 
 builder.Services.AddSingleton<TerrainChunkGenerator>(sp =>
@@ -187,7 +199,14 @@ builder.Services.AddScoped<WorldChunkRepository>(sp =>
 });
 
 // Register terrain chunk coordinator (orchestration only - no S3 dependencies)
-builder.Services.AddScoped<ITerrainChunkCoordinator, TerrainChunkCoordinator>();
+builder.Services.AddScoped<ITerrainChunkCoordinator>(sp =>
+{
+    var repository = sp.GetRequiredService<WorldChunkRepository>();
+    var generator = sp.GetRequiredService<TerrainChunkGenerator>();
+    var writer = sp.GetRequiredService<TerrainChunkWriter>();
+    var logger = sp.GetRequiredService<ILogger<TerrainChunkCoordinator>>();
+    return new TerrainChunkCoordinator(repository, generator, writer, logger);
+});
 
 // Register hosted service to populate DEM tile index at startup
 builder.Services.AddHostedService<DemTileIndexInitializer>();

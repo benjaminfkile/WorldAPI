@@ -17,7 +17,6 @@ public class TerrainChunkGeneratorTests
     {
         return new WorldConfig
         {
-            Version = "v1",
             Origin = new OriginConfig
             {
                 Latitude = 46.0,

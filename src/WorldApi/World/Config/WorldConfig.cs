@@ -2,7 +2,6 @@ namespace WorldApi.World.Config;
 
 public sealed class WorldConfig
 {
-    public string Version { get; init; } = default!;
     public OriginConfig Origin { get; init; } = default!;
     public int ChunkSizeMeters { get; init; }
     public double MetersPerDegreeLatitude { get; init; }

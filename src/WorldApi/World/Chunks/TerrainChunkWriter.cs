@@ -1,8 +1,6 @@
 using Amazon.S3;
 using Amazon.S3.Model;
-using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
-using WorldApi.World.Config;
 
 namespace WorldApi.World.Chunks;
 
@@ -12,25 +10,20 @@ public sealed class TerrainChunkWriter
 {
     private readonly IAmazonS3 _s3Client;
     private readonly string _bucketName;
-    private readonly string _worldVersion;
     private readonly ILogger<TerrainChunkWriter> _logger;
 
-    public TerrainChunkWriter(IAmazonS3 s3Client, string bucketName, IOptions<WorldConfig> config, ILogger<TerrainChunkWriter> logger)
+    public TerrainChunkWriter(IAmazonS3 s3Client, string bucketName, ILogger<TerrainChunkWriter> logger)
     {
         _s3Client = s3Client;
         _bucketName = bucketName;
-        _worldVersion = config.Value.Version;
         _logger = logger;
     }
 
-    public async Task<ChunkUploadResult> WriteAsync(TerrainChunk chunk)
+    public async Task<ChunkUploadResult> WriteAsync(TerrainChunk chunk, string s3Key)
     {
-        // Build S3 key
-        string s3Key = BuildS3Key(chunk.ChunkX, chunk.ChunkZ, chunk.Resolution);
-
         // _logger.LogInformation(
-        //     "[TRACE] WriteAsync entry: ChunkX={ChunkX}, ChunkZ={ChunkZ}, Resolution={Resolution}, HeightsLength={HeightsLength}",
-        //     chunk.ChunkX, chunk.ChunkZ, chunk.Resolution, chunk.Heights.Length);
+        //     "[TRACE] WriteAsync entry: ChunkX={ChunkX}, ChunkZ={ChunkZ}, Resolution={Resolution}, HeightsLength={HeightsLength}, S3Key={S3Key}",
+        //     chunk.ChunkX, chunk.ChunkZ, chunk.Resolution, chunk.Heights.Length, s3Key);
 
         // Check if object already exists
         bool exists = await ObjectExistsAsync(s3Key);
@@ -70,11 +63,6 @@ public sealed class TerrainChunkWriter
         //     s3Key, response.ETag, data.Length);
 
         return new ChunkUploadResult(s3Key, response.ETag);
-    }
-
-    private string BuildS3Key(int chunkX, int chunkZ, int resolution)
-    {
-        return $"chunks/{_worldVersion}/terrain/r{resolution}/{chunkX}/{chunkZ}.bin";
     }
 
     private async Task<bool> ObjectExistsAsync(string s3Key)

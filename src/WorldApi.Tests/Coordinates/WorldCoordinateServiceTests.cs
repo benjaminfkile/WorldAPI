@@ -12,7 +12,6 @@ public class WorldCoordinateServiceTests
     {
         var config = new WorldConfig
         {
-            Version = "v1",
             Origin = new OriginConfig
             {
                 Latitude = originLat,

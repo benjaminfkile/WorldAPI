@@ -15,6 +15,7 @@ public interface ITerrainChunkCoordinator
         int chunkX,
         int chunkZ,
         int resolution,
+        string worldVersion,
         string layer = "terrain");
 
     Task TriggerGenerationAsync(

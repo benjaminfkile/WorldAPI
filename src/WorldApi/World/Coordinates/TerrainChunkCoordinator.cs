@@ -11,20 +11,17 @@ public class TerrainChunkCoordinator : ITerrainChunkCoordinator
     private readonly WorldChunkRepository _repository;
     private readonly TerrainChunkGenerator _generator;
     private readonly TerrainChunkWriter _writer;
-    private readonly string _worldVersion;
     private readonly ILogger<TerrainChunkCoordinator> _logger;
 
     public TerrainChunkCoordinator(
         WorldChunkRepository repository,
         TerrainChunkGenerator generator,
         TerrainChunkWriter writer,
-        IOptions<WorldConfig> config,
         ILogger<TerrainChunkCoordinator> logger)
     {
         _repository = repository;
         _generator = generator;
         _writer = writer;
-        _worldVersion = config.Value.Version;
         _logger = logger;
     }
 
@@ -32,10 +29,11 @@ public class TerrainChunkCoordinator : ITerrainChunkCoordinator
         int chunkX,
         int chunkZ,
         int resolution,
-        string layer)
+        string layer,
+        string worldVersion)
     {
-        // Build S3 key
-        string s3Key = $"chunks/{_worldVersion}/terrain/r{resolution}/{chunkX}/{chunkZ}.bin";
+        // Build S3 key using world version string (for cache busting and multi-world support)
+        string s3Key = $"chunks/{worldVersion}/terrain/r{resolution}/{chunkX}/{chunkZ}.bin";
 
         try
         {
@@ -49,7 +47,7 @@ public class TerrainChunkCoordinator : ITerrainChunkCoordinator
             // This is FAST and response-blocking (good)
             string contentHash = Convert.ToHexString(SHA256.HashData(serializedData));
             await _repository.UpsertReadyAsync(
-                chunkX, chunkZ, layer, resolution, _worldVersion, s3Key, contentHash);
+                chunkX, chunkZ, layer, resolution, worldVersion, s3Key, contentHash);
 
             // Step 4: Upload to S3 in background (fire-and-forget)
             // Response returns immediately after DB upsert
@@ -58,7 +56,7 @@ public class TerrainChunkCoordinator : ITerrainChunkCoordinator
             {
                 try
                 {
-                    await _writer.WriteAsync(chunk);
+                    await _writer.WriteAsync(chunk, s3Key);
                 }
                 catch (Exception ex)
                 {
@@ -82,18 +80,19 @@ public class TerrainChunkCoordinator : ITerrainChunkCoordinator
         }
     }
 
-    public async Task<bool> IsChunkReadyAsync(int chunkX, int chunkZ, int resolution, string layer = "terrain")
+    public async Task<bool> IsChunkReadyAsync(int chunkX, int chunkZ, int resolution, string worldVersion, string layer = "terrain")
     {
-        return await _repository.IsChunkReadyAsync(chunkX, chunkZ, layer, resolution, _worldVersion);
+        return await _repository.IsChunkReadyAsync(chunkX, chunkZ, layer, resolution, worldVersion);
     }
 
     public async Task<WorldChunkMetadata?> GetChunkMetadataAsync(
         int chunkX,
         int chunkZ,
         int resolution,
+        string worldVersion,
         string layer = "terrain")
     {
-        return await _repository.GetChunkAsync(chunkX, chunkZ, layer, resolution, _worldVersion);
+        return await _repository.GetChunkAsync(chunkX, chunkZ, layer, resolution, worldVersion);
     }
 
     /// <summary>
@@ -107,14 +106,8 @@ public class TerrainChunkCoordinator : ITerrainChunkCoordinator
         string worldVersion,
         string layer = "terrain")
     {
-        // Validate world version matches
-        if (worldVersion != _worldVersion)
-        {
-            return ChunkStatus.NotFound;
-        }
-
         // Check metadata
-        var metadata = await _repository.GetChunkAsync(chunkX, chunkZ, layer, resolution, _worldVersion);
+        var metadata = await _repository.GetChunkAsync(chunkX, chunkZ, layer, resolution, worldVersion);
 
         if (metadata == null)
         {
@@ -136,15 +129,9 @@ public class TerrainChunkCoordinator : ITerrainChunkCoordinator
         string worldVersion,
         string layer = "terrain")
     {
-        // Validate world version
-        if (worldVersion != _worldVersion)
-        {
-            throw new ArgumentException($"Invalid world version: {worldVersion}. Expected: {_worldVersion}");
-        }
-
         // Check if chunk already exists and is ready
         var existingMetadata = await _repository.GetChunkAsync(
-            chunkX, chunkZ, layer, resolution, _worldVersion);
+            chunkX, chunkZ, layer, resolution, worldVersion);
 
         if (existingMetadata != null && existingMetadata.Status == ChunkStatus.Ready)
         {
@@ -161,11 +148,11 @@ public class TerrainChunkCoordinator : ITerrainChunkCoordinator
                 //     "Starting background terrain generation: chunk ({ChunkX}, {ChunkZ}), resolution {Resolution}",
                 //     chunkX, chunkZ, resolution);
 
-                string s3Key = $"chunks/{_worldVersion}/terrain/r{resolution}/{chunkX}/{chunkZ}.bin";
+                string s3Key = $"chunks/{worldVersion}/terrain/r{resolution}/{chunkX}/{chunkZ}.bin";
                 var chunk = await _generator.GenerateAsync(chunkX, chunkZ, resolution);
-                var uploadResult = await _writer.WriteAsync(chunk);
+                var uploadResult = await _writer.WriteAsync(chunk, s3Key);
                 await _repository.UpsertReadyAsync(
-                    chunkX, chunkZ, layer, resolution, _worldVersion, s3Key, uploadResult.Checksum);
+                    chunkX, chunkZ, layer, resolution, worldVersion, s3Key, uploadResult.Checksum);
 
                 // _logger.LogInformation(
                 //     "Completed background terrain generation: chunk ({ChunkX}, {ChunkZ}), resolution {Resolution}, checksum {Checksum}",

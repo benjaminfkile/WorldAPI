@@ -15,6 +15,7 @@ public class TerrainChunksControllerTests
 {
     private readonly Mock<ITerrainChunkCoordinator> _mockCoordinator;
     private readonly Mock<ITerrainChunkReader> _mockReader;
+    private readonly Mock<IWorldVersionService> _mockWorldVersionService;
     private readonly Mock<ILogger<TerrainChunksController>> _mockLogger;
     private readonly Mock<IOptions<WorldAppSecrets>> _mockAppSecrets;
     private readonly TerrainChunksController _controller;
@@ -23,15 +24,27 @@ public class TerrainChunksControllerTests
     {
         _mockCoordinator = new Mock<ITerrainChunkCoordinator>();
         _mockReader = new Mock<ITerrainChunkReader>();
+        _mockWorldVersionService = new Mock<IWorldVersionService>();
         _mockLogger = new Mock<ILogger<TerrainChunksController>>();
         _mockAppSecrets = new Mock<IOptions<WorldAppSecrets>>();
         
         // Default: no CloudFront URL (legacy streaming mode)
         _mockAppSecrets.Setup(s => s.Value).Returns(new WorldAppSecrets { CloudfrontUrl = null });
         
+        // Mock successful world version lookup
+        _mockWorldVersionService
+            .Setup(w => w.GetWorldVersionAsync(It.IsAny<string>()))
+            .ReturnsAsync(new IWorldVersionService.WorldVersionInfo
+            {
+                Id = 1,
+                Version = "v1",
+                IsActive = true
+            });
+        
         _controller = new TerrainChunksController(
             _mockCoordinator.Object, 
-            _mockReader.Object, 
+            _mockReader.Object,
+            _mockWorldVersionService.Object,
             _mockAppSecrets.Object,
             _mockLogger.Object);
         
@@ -63,7 +76,7 @@ public class TerrainChunksControllerTests
             .ReturnsAsync(ChunkStatus.Ready);
 
         _mockCoordinator
-            .Setup(c => c.GetChunkMetadataAsync(chunkX, chunkZ, resolution, It.IsAny<string>()))
+            .Setup(c => c.GetChunkMetadataAsync(chunkX, chunkZ, resolution, worldVersion, It.IsAny<string>()))
             .ReturnsAsync(new WorldChunkMetadata 
             { 
                 ChunkX = chunkX, 
@@ -182,7 +195,7 @@ public class TerrainChunksControllerTests
             .ReturnsAsync(ChunkStatus.Ready);
 
         _mockCoordinator
-            .Setup(c => c.GetChunkMetadataAsync(chunkX, chunkZ, resolution, It.IsAny<string>()))
+            .Setup(c => c.GetChunkMetadataAsync(chunkX, chunkZ, resolution, worldVersion, It.IsAny<string>()))
             .ReturnsAsync(new WorldChunkMetadata 
             { 
                 ChunkX = chunkX, 
@@ -227,7 +240,7 @@ public class TerrainChunksControllerTests
             .Setup(c => c.GetChunkStatusAsync(chunkX, chunkZ, resolution, worldVersion, It.IsAny<string>()))
             .ReturnsAsync(ChunkStatus.Ready);
         _mockCoordinator
-            .Setup(c => c.GetChunkMetadataAsync(chunkX, chunkZ, resolution, It.IsAny<string>()))
+            .Setup(c => c.GetChunkMetadataAsync(chunkX, chunkZ, resolution, worldVersion, It.IsAny<string>()))
             .ReturnsAsync(new WorldChunkMetadata 
             { 
                 ChunkX = chunkX, 
@@ -272,7 +285,7 @@ public class TerrainChunksControllerTests
             .ReturnsAsync(ChunkStatus.Ready);
 
         _mockCoordinator
-            .Setup(c => c.GetChunkMetadataAsync(chunkX, chunkZ, resolution, It.IsAny<string>()))
+            .Setup(c => c.GetChunkMetadataAsync(chunkX, chunkZ, resolution, worldVersion, It.IsAny<string>()))
             .ReturnsAsync(new WorldChunkMetadata 
             { 
                 ChunkX = chunkX, 
@@ -343,7 +356,7 @@ public class TerrainChunksControllerTests
             .ReturnsAsync(ChunkStatus.Ready);
 
         _mockCoordinator
-            .Setup(c => c.GetChunkMetadataAsync(chunkX, chunkZ, resolution, It.IsAny<string>()))
+            .Setup(c => c.GetChunkMetadataAsync(chunkX, chunkZ, resolution, worldVersion, It.IsAny<string>()))
             .ReturnsAsync(new WorldChunkMetadata 
             { 
                 ChunkX = chunkX, 
@@ -421,7 +434,7 @@ public class TerrainChunksControllerTests
             .ReturnsAsync(ChunkStatus.Ready);
 
         mockCoordinator
-            .Setup(c => c.GetChunkMetadataAsync(chunkX, chunkZ, resolution, It.IsAny<string>()))
+            .Setup(c => c.GetChunkMetadataAsync(chunkX, chunkZ, resolution, worldVersion, It.IsAny<string>()))
             .ReturnsAsync(new WorldChunkMetadata
             {
                 ChunkX = chunkX,
@@ -435,9 +448,20 @@ public class TerrainChunksControllerTests
                 GeneratedAt = DateTimeOffset.UtcNow
             });
 
+        var mockWorldVersionService = new Mock<IWorldVersionService>();
+        mockWorldVersionService
+            .Setup(w => w.GetWorldVersionAsync(It.IsAny<string>()))
+            .ReturnsAsync(new IWorldVersionService.WorldVersionInfo
+            {
+                Id = 1,
+                Version = worldVersion,
+                IsActive = true
+            });
+
         var controller = new TerrainChunksController(
             mockCoordinator.Object,
             mockReader.Object,
+            mockWorldVersionService.Object,
             mockAppSecrets.Object,
             mockLogger.Object);
 

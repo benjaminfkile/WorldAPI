@@ -28,6 +28,31 @@ public sealed class WorldChunkRepository
         _ => throw new ArgumentException($"Unknown status string: {status}")
     };
 
+    /// <summary>
+    /// Look up world_version_id from world_versions table by version string.
+    /// </summary>
+    private async Task<long?> GetWorldVersionIdAsync(string worldVersion)
+    {
+        const string sql = @"
+            SELECT id FROM world_versions 
+            WHERE version = @version 
+            LIMIT 1";
+
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync();
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@version", worldVersion);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            return reader.GetInt64(0);
+        }
+
+        return null;
+    }
+
     public async Task<WorldChunkMetadata> InsertPendingAsync(
         int chunkX,
         int chunkZ,
@@ -36,16 +61,23 @@ public sealed class WorldChunkRepository
         string worldVersion,
         string s3Key)
     {
+        // Resolve world_version_id from string
+        var worldVersionId = await GetWorldVersionIdAsync(worldVersion);
+        if (worldVersionId == null)
+        {
+            throw new InvalidOperationException($"World version '{worldVersion}' not found in database");
+        }
+
         const string sql = @"
             INSERT INTO world_chunks (
-                chunk_x, chunk_z, layer, resolution, world_version, 
+                chunk_x, chunk_z, layer, resolution, world_version_id, world_version,
                 s3_key, checksum, status, generated_at
             )
             VALUES (
-                @chunkX, @chunkZ, @layer, @resolution, @worldVersion,
+                @chunkX, @chunkZ, @layer, @resolution, @worldVersionId, @worldVersion,
                 @s3Key, '', @status, @generatedAt
             )
-            ON CONFLICT (chunk_x, chunk_z, layer, resolution, world_version) 
+            ON CONFLICT (chunk_x, chunk_z, layer, resolution, world_version_id) 
             DO UPDATE SET 
                 status = EXCLUDED.status,
                 generated_at = EXCLUDED.generated_at
@@ -60,6 +92,7 @@ public sealed class WorldChunkRepository
         command.Parameters.AddWithValue("@chunkZ", chunkZ);
         command.Parameters.AddWithValue("@layer", layer);
         command.Parameters.AddWithValue("@resolution", resolution);
+        command.Parameters.AddWithValue("@worldVersionId", worldVersionId.Value);
         command.Parameters.AddWithValue("@worldVersion", worldVersion);
         command.Parameters.AddWithValue("@s3Key", s3Key);
         command.Parameters.AddWithValue("@status", StatusToString(ChunkStatus.Pending));
@@ -95,16 +128,23 @@ public sealed class WorldChunkRepository
         string s3Key,
         string checksum)
     {
+        // Resolve world_version_id from string
+        var worldVersionId = await GetWorldVersionIdAsync(worldVersion);
+        if (worldVersionId == null)
+        {
+            throw new InvalidOperationException($"World version '{worldVersion}' not found in database");
+        }
+
         const string sql = @"
             INSERT INTO world_chunks (
-                chunk_x, chunk_z, layer, resolution, world_version, 
+                chunk_x, chunk_z, layer, resolution, world_version_id, world_version, 
                 s3_key, checksum, status, generated_at
             )
             VALUES (
-                @chunkX, @chunkZ, @layer, @resolution, @worldVersion,
+                @chunkX, @chunkZ, @layer, @resolution, @worldVersionId, @worldVersion,
                 @s3Key, @checksum, @status, @generatedAt
             )
-            ON CONFLICT (chunk_x, chunk_z, layer, resolution, world_version) 
+            ON CONFLICT (chunk_x, chunk_z, layer, resolution, world_version_id) 
             DO UPDATE SET 
                 s3_key = EXCLUDED.s3_key,
                 checksum = EXCLUDED.checksum,
@@ -121,6 +161,7 @@ public sealed class WorldChunkRepository
         command.Parameters.AddWithValue("@chunkZ", chunkZ);
         command.Parameters.AddWithValue("@layer", layer);
         command.Parameters.AddWithValue("@resolution", resolution);
+        command.Parameters.AddWithValue("@worldVersionId", worldVersionId.Value);
         command.Parameters.AddWithValue("@worldVersion", worldVersion);
         command.Parameters.AddWithValue("@s3Key", s3Key);
         command.Parameters.AddWithValue("@checksum", checksum);
@@ -151,6 +192,13 @@ public sealed class WorldChunkRepository
         int resolution,
         string worldVersion)
     {
+        // Resolve world_version_id from string
+        var worldVersionId = await GetWorldVersionIdAsync(worldVersion);
+        if (worldVersionId == null)
+        {
+            return null;
+        }
+
         const string sql = @"
             SELECT chunk_x, chunk_z, layer, resolution, world_version, 
                    s3_key, checksum, status, generated_at
@@ -159,7 +207,7 @@ public sealed class WorldChunkRepository
               AND chunk_z = @chunkZ 
               AND layer = @layer
               AND resolution = @resolution
-              AND world_version = @worldVersion";
+              AND world_version_id = @worldVersionId";
 
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync();
@@ -169,7 +217,7 @@ public sealed class WorldChunkRepository
         command.Parameters.AddWithValue("@chunkZ", chunkZ);
         command.Parameters.AddWithValue("@layer", layer);
         command.Parameters.AddWithValue("@resolution", resolution);
-        command.Parameters.AddWithValue("@worldVersion", worldVersion);
+        command.Parameters.AddWithValue("@worldVersionId", worldVersionId.Value);
 
         await using var reader = await command.ExecuteReaderAsync();
         if (!await reader.ReadAsync())

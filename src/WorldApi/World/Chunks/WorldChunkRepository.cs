@@ -35,7 +35,7 @@ public sealed class WorldChunkRepository
     {
         const string sql = @"
             SELECT id FROM world_versions 
-            WHERE version = @version 
+            WHERE ""version"" = @version 
             LIMIT 1";
 
         await using var connection = new NpgsqlConnection(_connectionString);
@@ -70,18 +70,18 @@ public sealed class WorldChunkRepository
 
         const string sql = @"
             INSERT INTO world_chunks (
-                chunk_x, chunk_z, layer, resolution, world_version_id, world_version,
+                chunk_x, chunk_z, layer, resolution, world_version_id,
                 s3_key, checksum, status, generated_at
             )
             VALUES (
-                @chunkX, @chunkZ, @layer, @resolution, @worldVersionId, @worldVersion,
+                @chunkX, @chunkZ, @layer, @resolution, @worldVersionId,
                 @s3Key, '', @status, @generatedAt
             )
             ON CONFLICT (chunk_x, chunk_z, layer, resolution, world_version_id) 
             DO UPDATE SET 
                 status = EXCLUDED.status,
                 generated_at = EXCLUDED.generated_at
-            RETURNING chunk_x, chunk_z, layer, resolution, world_version, 
+            RETURNING chunk_x, chunk_z, layer, resolution, 
                       s3_key, checksum, status, generated_at";
 
         await using var connection = new NpgsqlConnection(_connectionString);
@@ -93,7 +93,6 @@ public sealed class WorldChunkRepository
         command.Parameters.AddWithValue("@layer", layer);
         command.Parameters.AddWithValue("@resolution", resolution);
         command.Parameters.AddWithValue("@worldVersionId", worldVersionId.Value);
-        command.Parameters.AddWithValue("@worldVersion", worldVersion);
         command.Parameters.AddWithValue("@s3Key", s3Key);
         command.Parameters.AddWithValue("@status", StatusToString(ChunkStatus.Pending));
         command.Parameters.AddWithValue("@generatedAt", DateTimeOffset.UtcNow);
@@ -107,11 +106,11 @@ public sealed class WorldChunkRepository
             ChunkZ = reader.GetInt32(1),
             Layer = reader.GetString(2),
             Resolution = reader.GetInt32(3),
-            WorldVersion = reader.GetString(4),
-            S3Key = reader.GetString(5),
-            Checksum = reader.GetString(6),
-            Status = StringToStatus(reader.GetString(7)),
-            GeneratedAt = reader.GetFieldValue<DateTimeOffset>(8)
+            WorldVersion = worldVersion,
+            S3Key = reader.GetString(4),
+            Checksum = reader.GetString(5),
+            Status = StringToStatus(reader.GetString(6)),
+            GeneratedAt = reader.GetFieldValue<DateTimeOffset>(7)
         };
     }
 
@@ -137,11 +136,11 @@ public sealed class WorldChunkRepository
 
         const string sql = @"
             INSERT INTO world_chunks (
-                chunk_x, chunk_z, layer, resolution, world_version_id, world_version, 
+                chunk_x, chunk_z, layer, resolution, world_version_id, 
                 s3_key, checksum, status, generated_at
             )
             VALUES (
-                @chunkX, @chunkZ, @layer, @resolution, @worldVersionId, @worldVersion,
+                @chunkX, @chunkZ, @layer, @resolution, @worldVersionId,
                 @s3Key, @checksum, @status, @generatedAt
             )
             ON CONFLICT (chunk_x, chunk_z, layer, resolution, world_version_id) 
@@ -150,7 +149,7 @@ public sealed class WorldChunkRepository
                 checksum = EXCLUDED.checksum,
                 status = EXCLUDED.status,
                 generated_at = EXCLUDED.generated_at
-            RETURNING chunk_x, chunk_z, layer, resolution, world_version, 
+            RETURNING chunk_x, chunk_z, layer, resolution, 
                       s3_key, checksum, status, generated_at";
 
         await using var connection = new NpgsqlConnection(_connectionString);
@@ -162,7 +161,6 @@ public sealed class WorldChunkRepository
         command.Parameters.AddWithValue("@layer", layer);
         command.Parameters.AddWithValue("@resolution", resolution);
         command.Parameters.AddWithValue("@worldVersionId", worldVersionId.Value);
-        command.Parameters.AddWithValue("@worldVersion", worldVersion);
         command.Parameters.AddWithValue("@s3Key", s3Key);
         command.Parameters.AddWithValue("@checksum", checksum);
         command.Parameters.AddWithValue("@status", StatusToString(ChunkStatus.Ready));
@@ -177,11 +175,11 @@ public sealed class WorldChunkRepository
             ChunkZ = reader.GetInt32(1),
             Layer = reader.GetString(2),
             Resolution = reader.GetInt32(3),
-            WorldVersion = reader.GetString(4),
-            S3Key = reader.GetString(5),
-            Checksum = reader.GetString(6),
-            Status = StringToStatus(reader.GetString(7)),
-            GeneratedAt = reader.GetFieldValue<DateTimeOffset>(8)
+            WorldVersion = worldVersion,
+            S3Key = reader.GetString(4),
+            Checksum = reader.GetString(5),
+            Status = StringToStatus(reader.GetString(6)),
+            GeneratedAt = reader.GetFieldValue<DateTimeOffset>(7)
         };
     }
 
@@ -200,7 +198,7 @@ public sealed class WorldChunkRepository
         }
 
         const string sql = @"
-            SELECT chunk_x, chunk_z, layer, resolution, world_version, 
+            SELECT chunk_x, chunk_z, layer, resolution, 
                    s3_key, checksum, status, generated_at
             FROM world_chunks
             WHERE chunk_x = @chunkX 
@@ -231,11 +229,11 @@ public sealed class WorldChunkRepository
             ChunkZ = reader.GetInt32(1),
             Layer = reader.GetString(2),
             Resolution = reader.GetInt32(3),
-            WorldVersion = reader.GetString(4),
-            S3Key = reader.GetString(5),
-            Checksum = reader.GetString(6),
-            Status = StringToStatus(reader.GetString(7)),
-            GeneratedAt = reader.GetFieldValue<DateTimeOffset>(8)
+            WorldVersion = worldVersion,
+            S3Key = reader.GetString(4),
+            Checksum = reader.GetString(5),
+            Status = StringToStatus(reader.GetString(6)),
+            GeneratedAt = reader.GetFieldValue<DateTimeOffset>(7)
         };
     }
 

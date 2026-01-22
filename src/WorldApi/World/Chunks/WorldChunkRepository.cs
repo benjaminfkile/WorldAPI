@@ -77,10 +77,6 @@ public sealed class WorldChunkRepository
                 @chunkX, @chunkZ, @layer, @resolution, @worldVersionId,
                 @s3Key, '', @status, @generatedAt
             )
-            ON CONFLICT (chunk_x, chunk_z, layer, resolution, world_version_id) 
-            DO UPDATE SET 
-                status = EXCLUDED.status,
-                generated_at = EXCLUDED.generated_at
             RETURNING chunk_x, chunk_z, layer, resolution, 
                       s3_key, checksum, status, generated_at";
 
@@ -143,12 +139,6 @@ public sealed class WorldChunkRepository
                 @chunkX, @chunkZ, @layer, @resolution, @worldVersionId,
                 @s3Key, @checksum, @status, @generatedAt
             )
-            ON CONFLICT (chunk_x, chunk_z, layer, resolution, world_version_id) 
-            DO UPDATE SET 
-                s3_key = EXCLUDED.s3_key,
-                checksum = EXCLUDED.checksum,
-                status = EXCLUDED.status,
-                generated_at = EXCLUDED.generated_at
             RETURNING chunk_x, chunk_z, layer, resolution, 
                       s3_key, checksum, status, generated_at";
 

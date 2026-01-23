@@ -197,6 +197,16 @@ builder.Services.AddSingleton<PublicSrtmClient>(sp =>
     return new PublicSrtmClient(s3Client, logger);
 });
 
+// Local SRTM persistence for saving fetched tiles to local cache
+builder.Services.AddSingleton<LocalSrtmPersistence>(sp =>
+{
+    var s3Client = sp.GetRequiredService<IAmazonS3>();
+    var appSecrets = sp.GetRequiredService<IOptions<WorldAppSecrets>>().Value;
+    var bucketName = appSecrets.S3BucketName ?? throw new InvalidOperationException("S3 bucket name not configured in app secrets (s3BucketName)");
+    var logger = sp.GetRequiredService<ILogger<LocalSrtmPersistence>>();
+    return new LocalSrtmPersistence(s3Client, bucketName, logger);
+});
+
 // Factory for services that need bucket name
 builder.Services.AddSingleton<DemTileIndexBuilder>(sp =>
 {

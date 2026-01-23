@@ -12,7 +12,7 @@ public sealed class TerrainChunksController : ControllerBase
 {
     private readonly ITerrainChunkCoordinator _coordinator;
     private readonly ITerrainChunkReader _reader;
-    private readonly IWorldVersionService _worldVersionService;
+    private readonly IWorldVersionCache _versionCache;
     private readonly ILogger<TerrainChunksController> _logger;
     private readonly string? _cloudfrontUrl;
     private readonly bool _useCloudfront;
@@ -21,13 +21,13 @@ public sealed class TerrainChunksController : ControllerBase
     public TerrainChunksController(
         ITerrainChunkCoordinator coordinator,
         ITerrainChunkReader reader,
-        IWorldVersionService worldVersionService,
+        IWorldVersionCache versionCache,
         IOptions<WorldAppSecrets> appSecrets,
         ILogger<TerrainChunksController> logger)
     {
         _coordinator = coordinator;
         _reader = reader;
-        _worldVersionService = worldVersionService;
+        _versionCache = versionCache;
         _logger = logger;
         _cloudfrontUrl = appSecrets.Value.CloudfrontUrl;
         // Parse UseLocalS3 string to bool (accepts "true"/"false", case-insensitive)
@@ -52,12 +52,12 @@ public sealed class TerrainChunksController : ControllerBase
         int chunkZ,
         CancellationToken cancellationToken = default)
     {
-        // Validate world version exists in database
-        var worldVersionInfo = await _worldVersionService.GetWorldVersionAsync(worldVersion);
+        // Validate world version exists in cache (synchronous, zero-latency lookup - no database access)
+        var worldVersionInfo = _versionCache.GetWorldVersion(worldVersion);
         
         if (worldVersionInfo == null)
         {
-            // World version not found in database
+            // World version not found in cache
             _logger.LogWarning(
                 "Terrain chunk request for unknown world version: {WorldVersion}",
                 worldVersion);

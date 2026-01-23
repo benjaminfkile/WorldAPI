@@ -15,7 +15,7 @@ public class TerrainChunksControllerTests
 {
     private readonly Mock<ITerrainChunkCoordinator> _mockCoordinator;
     private readonly Mock<ITerrainChunkReader> _mockReader;
-    private readonly Mock<IWorldVersionService> _mockWorldVersionService;
+    private readonly Mock<IWorldVersionCache> _mockVersionCache;
     private readonly Mock<ILogger<TerrainChunksController>> _mockLogger;
     private readonly Mock<IOptions<WorldAppSecrets>> _mockAppSecrets;
     private readonly TerrainChunksController _controller;
@@ -24,17 +24,17 @@ public class TerrainChunksControllerTests
     {
         _mockCoordinator = new Mock<ITerrainChunkCoordinator>();
         _mockReader = new Mock<ITerrainChunkReader>();
-        _mockWorldVersionService = new Mock<IWorldVersionService>();
+        _mockVersionCache = new Mock<IWorldVersionCache>();
         _mockLogger = new Mock<ILogger<TerrainChunksController>>();
         _mockAppSecrets = new Mock<IOptions<WorldAppSecrets>>();
         
         // Default: no CloudFront URL (legacy streaming mode)
         _mockAppSecrets.Setup(s => s.Value).Returns(new WorldAppSecrets { CloudfrontUrl = null });
         
-        // Mock successful world version lookup
-        _mockWorldVersionService
-            .Setup(w => w.GetWorldVersionAsync(It.IsAny<string>()))
-            .ReturnsAsync(new IWorldVersionService.WorldVersionInfo
+        // Mock successful world version lookup from cache
+        _mockVersionCache
+            .Setup(w => w.GetWorldVersion(It.IsAny<string>()))
+            .Returns(new IWorldVersionCache.WorldVersionInfo
             {
                 Id = 1,
                 Version = "v1",
@@ -44,7 +44,7 @@ public class TerrainChunksControllerTests
         _controller = new TerrainChunksController(
             _mockCoordinator.Object, 
             _mockReader.Object,
-            _mockWorldVersionService.Object,
+            _mockVersionCache.Object,
             _mockAppSecrets.Object,
             _mockLogger.Object);
         
@@ -448,10 +448,10 @@ public class TerrainChunksControllerTests
                 GeneratedAt = DateTimeOffset.UtcNow
             });
 
-        var mockWorldVersionService = new Mock<IWorldVersionService>();
-        mockWorldVersionService
-            .Setup(w => w.GetWorldVersionAsync(It.IsAny<string>()))
-            .ReturnsAsync(new IWorldVersionService.WorldVersionInfo
+        var mockVersionCache = new Mock<IWorldVersionCache>();
+        mockVersionCache
+            .Setup(w => w.GetWorldVersion(It.IsAny<string>()))
+            .Returns(new IWorldVersionCache.WorldVersionInfo
             {
                 Id = 1,
                 Version = worldVersion,
@@ -461,7 +461,7 @@ public class TerrainChunksControllerTests
         var controller = new TerrainChunksController(
             mockCoordinator.Object,
             mockReader.Object,
-            mockWorldVersionService.Object,
+            mockVersionCache.Object,
             mockAppSecrets.Object,
             mockLogger.Object);
 

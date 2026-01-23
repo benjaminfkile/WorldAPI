@@ -6,23 +6,32 @@ using WorldApi.World.Chunks;
 
 namespace WorldApi.World.Coordinates;
 
+/// <summary>
+/// Orchestrates terrain chunk generation, upload, and metadata storage.
+/// 
+/// Applies backpressure via SemaphoreSlim to limit concurrent database writes
+/// and prevent connection exhaustion under heavy load.
+/// </summary>
 public class TerrainChunkCoordinator : ITerrainChunkCoordinator
 {
     private readonly WorldChunkRepository _repository;
     private readonly TerrainChunkGenerator _generator;
     private readonly TerrainChunkWriter _writer;
     private readonly ILogger<TerrainChunkCoordinator> _logger;
+    private readonly SemaphoreSlim _dbWriteSemaphore;
 
     public TerrainChunkCoordinator(
         WorldChunkRepository repository,
         TerrainChunkGenerator generator,
         TerrainChunkWriter writer,
-        ILogger<TerrainChunkCoordinator> logger)
+        ILogger<TerrainChunkCoordinator> logger,
+        SemaphoreSlim dbWriteSemaphore)
     {
         _repository = repository;
         _generator = generator;
         _writer = writer;
         _logger = logger;
+        _dbWriteSemaphore = dbWriteSemaphore ?? throw new ArgumentNullException(nameof(dbWriteSemaphore));
     }
 
     private async Task<TerrainChunk> GenerateAndUploadChunkAsync(
@@ -43,11 +52,20 @@ public class TerrainChunkCoordinator : ITerrainChunkCoordinator
             // Step 2: Serialize chunk for S3 (do this sync to capture any errors early)
             byte[] serializedData = TerrainChunkSerializer.Serialize(chunk);
 
-            // Step 3: Upsert DB metadata with a pending checksum
+            // Step 3: Upsert DB metadata with backpressure guard
             // This is FAST and response-blocking (good)
+            // SemaphoreSlim ensures max N concurrent DB writes to prevent connection storms
             string contentHash = Convert.ToHexString(SHA256.HashData(serializedData));
-            await _repository.UpsertReadyAsync(
-                chunkX, chunkZ, layer, resolution, worldVersion, s3Key, contentHash);
+            await _dbWriteSemaphore.WaitAsync();
+            try
+            {
+                await _repository.UpsertReadyAsync(
+                    chunkX, chunkZ, layer, resolution, worldVersion, s3Key, contentHash);
+            }
+            finally
+            {
+                _dbWriteSemaphore.Release();
+            }
 
             // Step 4: Upload to S3 in background (fire-and-forget)
             // Response returns immediately after DB upsert
@@ -121,6 +139,7 @@ public class TerrainChunkCoordinator : ITerrainChunkCoordinator
     /// Triggers chunk generation without waiting for completion.
     /// Only starts generation if chunk is not already ready.
     /// Uses fire-and-forget pattern for async generation.
+    /// Database writes are guarded by SemaphoreSlim to prevent connection storms.
     /// </summary>
     public virtual async Task TriggerGenerationAsync(
         int chunkX,
@@ -151,8 +170,18 @@ public class TerrainChunkCoordinator : ITerrainChunkCoordinator
                 string s3Key = $"chunks/{worldVersion}/terrain/r{resolution}/{chunkX}/{chunkZ}.bin";
                 var chunk = await _generator.GenerateAsync(chunkX, chunkZ, resolution);
                 var uploadResult = await _writer.WriteAsync(chunk, s3Key);
-                await _repository.UpsertReadyAsync(
-                    chunkX, chunkZ, layer, resolution, worldVersion, s3Key, uploadResult.Checksum);
+                
+                // Guard DB write with SemaphoreSlim for backpressure
+                await _dbWriteSemaphore.WaitAsync();
+                try
+                {
+                    await _repository.UpsertReadyAsync(
+                        chunkX, chunkZ, layer, resolution, worldVersion, s3Key, uploadResult.Checksum);
+                }
+                finally
+                {
+                    _dbWriteSemaphore.Release();
+                }
 
                 // _logger.LogInformation(
                 //     "Completed background terrain generation: chunk ({ChunkX}, {ChunkZ}), resolution {Resolution}, checksum {Checksum}",

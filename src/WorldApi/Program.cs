@@ -6,6 +6,7 @@ using WorldApi.Configuration;
 using Amazon.S3;
 using Amazon.SecretsManager;
 using Microsoft.Extensions.Options;
+using Npgsql;
 
 // Load .env file for local development
 var envFile = FindEnvFile();
@@ -40,13 +41,6 @@ builder.Services.AddSingleton<IAmazonSecretsManager>(sp => new AmazonSecretsMana
 
 // Secrets Manager Service
 builder.Services.AddSingleton<SecretsManagerService>();
-
-// World Version Service
-builder.Services.AddSingleton<IWorldVersionService>(sp =>
-{
-    // Will be initialized after connection string is built
-    return new WorldVersionService("");
-});
 
 // Load secrets from AWS Secrets Manager at startup
 var awsRegion = builder.Configuration["AWS_REGION"] ?? Environment.GetEnvironmentVariable("AWS_REGION");
@@ -99,11 +93,59 @@ else
 builder.Services.AddSingleton(appSecrets);
 builder.Services.AddSingleton<IOptions<WorldAppSecrets>>(new OptionsWrapper<WorldAppSecrets>(appSecrets));
 
-// Update WorldVersionService with connection string
+// Register NpgsqlDataSource as singleton with connection pooling configuration
+// This eliminates connection storms by maintaining a shared pool (max 20 connections)
+// Timeout: 15 seconds for acquiring a connection from pool
+// CommandTimeout: 30 seconds for SQL commands
+builder.Services.AddSingleton<NpgsqlDataSource>(sp =>
+{
+    var connectionStringBuilder = new NpgsqlConnectionStringBuilder(connectionString)
+    {
+        MaxPoolSize = 20,  // Limit concurrent connections to prevent storms
+        Timeout = 15       // Acquisition timeout in seconds
+    };
+    
+    return new NpgsqlDataSourceBuilder(connectionStringBuilder.ConnectionString).Build();
+});
+
+// Update WorldVersionService with NpgsqlDataSource
 builder.Services.AddSingleton<IWorldVersionService>(sp =>
 {
-    return new WorldVersionService(connectionString);
+    var dataSource = sp.GetRequiredService<NpgsqlDataSource>();
+    return new WorldVersionService(dataSource);
 });
+
+// Load active world versions from PostgreSQL at startup
+// This happens BEFORE the DI container is finalized, ensuring cache is ready for requests
+#pragma warning disable ASP0000
+using (var preStartScope = builder.Services.BuildServiceProvider().CreateScope())
+{
+    var dataSource = preStartScope.ServiceProvider.GetRequiredService<NpgsqlDataSource>();
+    var logger = preStartScope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    
+    logger.LogInformation("🚀 Loading active world versions from PostgreSQL at startup...");
+    
+    var activeVersions = await LoadActiveWorldVersionsFromDatabaseAsync(dataSource, logger);
+    
+    if (activeVersions.Count == 0)
+    {
+        var errorMsg = "❌ STARTUP FAILURE: No active world versions found in database. " +
+            "At least one world version must have is_active=true. " +
+            "Check your database configuration.";
+        logger.LogCritical(errorMsg);
+        throw new InvalidOperationException(errorMsg);
+    }
+
+    logger.LogInformation("✓ Successfully loaded {Count} active world version(s) at startup", activeVersions.Count);
+
+    // Register the populated cache as singleton
+    builder.Services.AddSingleton<IWorldVersionCache>(sp =>
+    {
+        var cacheLogger = sp.GetRequiredService<ILogger<WorldVersionCache>>();
+        return new WorldVersionCache(activeVersions, cacheLogger);
+    });
+}
+#pragma warning restore ASP0000
 
 // Configure S3 client based on secrets (after secrets are loaded)
 builder.Services.AddSingleton<IAmazonS3>(sp =>
@@ -194,18 +236,21 @@ builder.Services.AddSingleton<TerrainChunkGenerator>(sp =>
 
 builder.Services.AddScoped<WorldChunkRepository>(sp =>
 {
-    // Use the connection string built from AWS Secrets Manager
-    return new WorldChunkRepository(connectionString);
+    // Inject NpgsqlDataSource (eliminates direct connection creation)
+    var dataSource = sp.GetRequiredService<NpgsqlDataSource>();
+    return new WorldChunkRepository(dataSource);
 });
 
 // Register terrain chunk coordinator (orchestration only - no S3 dependencies)
+// SemaphoreSlim(3) limits concurrent database writes to 3 to prevent connection exhaustion
 builder.Services.AddScoped<ITerrainChunkCoordinator>(sp =>
 {
     var repository = sp.GetRequiredService<WorldChunkRepository>();
     var generator = sp.GetRequiredService<TerrainChunkGenerator>();
     var writer = sp.GetRequiredService<TerrainChunkWriter>();
     var logger = sp.GetRequiredService<ILogger<TerrainChunkCoordinator>>();
-    return new TerrainChunkCoordinator(repository, generator, writer, logger);
+    var dbWriteSemaphore = new SemaphoreSlim(3, 3);  // Max 3 concurrent DB writes
+    return new TerrainChunkCoordinator(repository, generator, writer, logger, dbWriteSemaphore);
 });
 
 // Register hosted service to populate DEM tile index at startup
@@ -242,6 +287,48 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+/// <summary>
+/// Load active world versions from PostgreSQL database.
+/// Called during startup to populate the world version cache.
+/// Returns list of active world versions.
+/// </summary>
+static async Task<List<IWorldVersionCache.WorldVersionInfo>> LoadActiveWorldVersionsFromDatabaseAsync(
+    Npgsql.NpgsqlDataSource dataSource,
+    ILogger logger)
+{
+    const string sql = @"
+        SELECT id, version, is_active 
+        FROM world_versions 
+        WHERE is_active = true
+        ORDER BY version ASC";
+
+    var versions = new List<IWorldVersionCache.WorldVersionInfo>();
+
+    try
+    {
+        await using var connection = await dataSource.OpenConnectionAsync();
+        await using var command = new Npgsql.NpgsqlCommand(sql, connection);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            versions.Add(new IWorldVersionCache.WorldVersionInfo
+            {
+                Id = reader.GetInt64(0),
+                Version = reader.GetString(1),
+                IsActive = reader.GetBoolean(2)
+            });
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogCritical(ex, "❌ Failed to query world_versions table from database");
+        throw;
+    }
+
+    return versions;
+}
 
 /// <summary>
 /// Search upward from current directory to find .env file

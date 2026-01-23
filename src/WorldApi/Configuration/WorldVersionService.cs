@@ -10,6 +10,9 @@ namespace WorldApi.Configuration;
 /// - Validate if a world is active
 /// - Convert world version string to internal world_version_id
 /// - Provide world metadata (id, version, is_active status)
+/// 
+/// Uses shared NpgsqlDataSource for connection pooling to prevent connection storms.
+/// All database operations go through the pool, which enforces MaxPoolSize limits.
 /// </summary>
 public interface IWorldVersionService
 {
@@ -44,11 +47,11 @@ public interface IWorldVersionService
 
 public sealed class WorldVersionService : IWorldVersionService
 {
-    private readonly string _connectionString;
+    private readonly NpgsqlDataSource _dataSource;
 
-    public WorldVersionService(string connectionString)
+    public WorldVersionService(NpgsqlDataSource dataSource)
     {
-        _connectionString = connectionString;
+        _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
     }
 
     public async Task<IWorldVersionService.WorldVersionInfo?> GetWorldVersionAsync(string version)
@@ -59,8 +62,7 @@ public sealed class WorldVersionService : IWorldVersionService
             WHERE version = @version
             LIMIT 1";
 
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync();
+        await using var connection = await _dataSource.OpenConnectionAsync();
 
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("@version", version);
@@ -89,8 +91,7 @@ public sealed class WorldVersionService : IWorldVersionService
 
         var versions = new List<IWorldVersionService.WorldVersionInfo>();
 
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync();
+        await using var connection = await _dataSource.OpenConnectionAsync();
 
         await using var command = new NpgsqlCommand(sql, connection);
 

@@ -17,7 +17,7 @@ namespace WorldApi.World.Dem;
 /// 
 /// Reference: https://lpdaac.usgs.gov/products/srtmgl1v003/
 /// </summary>
-public sealed class PublicSrtmClient
+public sealed class PublicSrtmClient : IPublicSrtmClient
 {
     private readonly IAmazonS3 _s3Client;
     private readonly string _publicBucketName;

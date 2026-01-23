@@ -17,7 +17,7 @@ namespace WorldApi.World.Dem;
 /// - Uses S3 PutObject for atomicity (single-shot operation, no multipart)
 /// - Logs all operations for observability
 /// </summary>
-public sealed class LocalSrtmPersistence
+public sealed class LocalSrtmPersistence : ILocalSrtmPersistence
 {
     private readonly IAmazonS3 _s3Client;
     private readonly string _bucketName;

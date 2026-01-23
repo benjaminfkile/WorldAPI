@@ -190,7 +190,7 @@ builder.Services.AddSingleton<HgtTileCache>();
 builder.Services.AddSingleton<DemTileIndex>();
 
 // Public SRTM client for lazy-loading DEM tiles from public bucket
-builder.Services.AddSingleton<PublicSrtmClient>(sp =>
+builder.Services.AddSingleton<IPublicSrtmClient, PublicSrtmClient>(sp =>
 {
     var s3Client = sp.GetRequiredService<IAmazonS3>();
     var logger = sp.GetRequiredService<ILogger<PublicSrtmClient>>();
@@ -198,13 +198,32 @@ builder.Services.AddSingleton<PublicSrtmClient>(sp =>
 });
 
 // Local SRTM persistence for saving fetched tiles to local cache
-builder.Services.AddSingleton<LocalSrtmPersistence>(sp =>
+builder.Services.AddSingleton<ILocalSrtmPersistence, LocalSrtmPersistence>(sp =>
 {
     var s3Client = sp.GetRequiredService<IAmazonS3>();
     var appSecrets = sp.GetRequiredService<IOptions<WorldAppSecrets>>().Value;
     var bucketName = appSecrets.S3BucketName ?? throw new InvalidOperationException("S3 bucket name not configured in app secrets (s3BucketName)");
     var logger = sp.GetRequiredService<ILogger<LocalSrtmPersistence>>();
     return new LocalSrtmPersistence(s3Client, bucketName, logger);
+});
+
+// Runtime DEM index mutator for adding fetched tiles to the in-memory index
+builder.Services.AddSingleton<RuntimeDemIndexMutator>(sp =>
+{
+    var index = sp.GetRequiredService<DemTileIndex>();
+    var logger = sp.GetRequiredService<ILogger<RuntimeDemIndexMutator>>();
+    return new RuntimeDemIndexMutator(index, logger);
+});
+
+// DEM tile resolver for orchestrating fetch-persist-index pipeline
+builder.Services.AddSingleton<DemTileResolver>(sp =>
+{
+    var index = sp.GetRequiredService<DemTileIndex>();
+    var publicClient = sp.GetRequiredService<IPublicSrtmClient>();
+    var persistence = sp.GetRequiredService<ILocalSrtmPersistence>();
+    var mutator = sp.GetRequiredService<RuntimeDemIndexMutator>();
+    var logger = sp.GetRequiredService<ILogger<DemTileResolver>>();
+    return new DemTileResolver(index, publicClient, persistence, mutator, logger);
 });
 
 // Factory for services that need bucket name

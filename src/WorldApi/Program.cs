@@ -195,7 +195,8 @@ builder.Services.AddSingleton<DemTileIndexBuilder>(sp =>
     var s3Client = sp.GetRequiredService<IAmazonS3>();
     var appSecrets = sp.GetRequiredService<IOptions<WorldAppSecrets>>().Value;
     var bucketName = appSecrets.S3BucketName ?? throw new InvalidOperationException("S3 bucket name not configured in app secrets (s3BucketName)");
-    return new DemTileIndexBuilder(s3Client, bucketName);
+    var logger = sp.GetRequiredService<ILogger<DemTileIndexBuilder>>();
+    return new DemTileIndexBuilder(s3Client, bucketName, logger);
 });
 
 builder.Services.AddSingleton<HgtTileLoader>(sp =>

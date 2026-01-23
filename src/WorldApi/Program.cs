@@ -189,6 +189,14 @@ builder.Services.AddSingleton<WorldCoordinateService>();
 builder.Services.AddSingleton<HgtTileCache>();
 builder.Services.AddSingleton<DemTileIndex>();
 
+// Public SRTM client for lazy-loading DEM tiles from public bucket
+builder.Services.AddSingleton<PublicSrtmClient>(sp =>
+{
+    var s3Client = sp.GetRequiredService<IAmazonS3>();
+    var logger = sp.GetRequiredService<ILogger<PublicSrtmClient>>();
+    return new PublicSrtmClient(s3Client, logger);
+});
+
 // Factory for services that need bucket name
 builder.Services.AddSingleton<DemTileIndexBuilder>(sp =>
 {

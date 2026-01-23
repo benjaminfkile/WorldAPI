@@ -9,7 +9,7 @@ namespace WorldApi.World.Chunks;
 public sealed class TerrainChunkGenerator
 {
     private readonly WorldCoordinateService _coordinateService;
-    private readonly DemTileIndex _tileIndex;
+    private readonly DemTileResolver _tileResolver;
     private readonly HgtTileCache _tileCache;
     private readonly HgtTileLoader _tileLoader;
     private readonly WorldConfig _config;
@@ -17,14 +17,14 @@ public sealed class TerrainChunkGenerator
 
     public TerrainChunkGenerator(
         WorldCoordinateService coordinateService,
-        DemTileIndex tileIndex,
+        DemTileResolver tileResolver,
         HgtTileCache tileCache,
         HgtTileLoader tileLoader,
         IOptions<WorldConfig> config,
         ILogger<TerrainChunkGenerator> logger)
     {
         _coordinateService = coordinateService;
-        _tileIndex = tileIndex;
+        _tileResolver = tileResolver;
         _tileCache = tileCache;
         _tileLoader = tileLoader;
         _config = config.Value;
@@ -44,12 +44,18 @@ public sealed class TerrainChunkGenerator
         double centerLat = chunkOrigin.Latitude + (_config.ChunkSizeMeters / 2.0) / 111320.0;
         double centerLon = chunkOrigin.Longitude + (_config.ChunkSizeMeters / 2.0) / (111320.0 * Math.Cos(chunkOrigin.Latitude * Math.PI / 180.0));
 
-        // Step 2: Resolve required DEM tile
-        var demTile = _tileIndex.FindTileContaining(centerLat, centerLon);
-        if (demTile == null)
+        // Step 2: Resolve required DEM tile (with lazy fetch if missing)
+        DemTile demTile;
+        try
         {
+            demTile = await _tileResolver.ResolveTileAsync(centerLat, centerLon);
+        }
+        catch (TileNotFoundException ex)
+        {
+            _logger.LogWarning("DEM tile not available for chunk ({ChunkX}, {ChunkZ}) at lat/lon ({CenterLat:F6}, {CenterLon:F6}): {Message}",
+                chunkX, chunkZ, centerLat, centerLon, ex.Message);
             throw new InvalidOperationException(
-                $"No DEM tile found for chunk ({chunkX}, {chunkZ}) at lat/lon ({centerLat:F6}, {centerLon:F6})");
+                $"No DEM tile available for chunk ({chunkX}, {chunkZ}) at lat/lon ({centerLat:F6}, {centerLon:F6})", ex);
         }
 
         // Step 3: Load tile via cache/loader

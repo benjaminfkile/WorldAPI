@@ -1,3 +1,5 @@
+using Amazon.S3;
+
 namespace WorldApi.World.Dem;
 
 /// <summary>
@@ -34,12 +36,20 @@ public sealed class DemTileIndexInitializer : IHostedService
                 _index.Add(tile);
             }
 
+            // Startup succeeds even with 0 tiles - allows lazy fetching
             // _logger.LogInformation("Loaded {TileCount} DEM tiles into index", _index.Count);
+        }
+        catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            // Bucket or prefix doesn't exist - this is OK, treat as empty
+            // Allows startup with empty DEM folder for lazy fetching
+            _logger.LogWarning("DEM bucket or folder not found, starting with empty index");
         }
         catch (Exception ex)
         {
+            // S3 unreachable, configuration invalid, or other critical errors
             _logger.LogError(ex, "Failed to initialize DEM tile index");
-            throw; // Fail startup if index can't be built
+            throw; // Fail startup only for critical errors
         }
     }
 

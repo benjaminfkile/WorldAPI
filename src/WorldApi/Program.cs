@@ -189,6 +189,13 @@ builder.Services.AddSingleton<WorldCoordinateService>();
 builder.Services.AddSingleton<HgtTileCache>();
 builder.Services.AddSingleton<DemTileIndex>();
 
+// HttpClient for PublicSrtmClient
+builder.Services.AddSingleton<PublicSrtmClient>(sp =>
+{
+    var httpClient = new HttpClient();
+    return new PublicSrtmClient(httpClient);
+});
+
 // Factory for services that need bucket name
 builder.Services.AddSingleton<DemTileIndexBuilder>(sp =>
 {
@@ -223,15 +230,32 @@ builder.Services.AddSingleton<TerrainChunkWriter>(sp =>
     return new TerrainChunkWriter(s3Client, bucketName, logger);
 });
 
+// DEM lazy fetch services
+builder.Services.AddSingleton<DemTileWriter>(sp =>
+{
+    var s3Client = sp.GetRequiredService<IAmazonS3>();
+    var appSecrets = sp.GetRequiredService<IOptions<WorldAppSecrets>>().Value;
+    var bucketName = appSecrets.S3BucketName ?? throw new InvalidOperationException("S3 bucket name not configured in app secrets (s3BucketName)");
+    return new DemTileWriter(s3Client, bucketName);
+});
+
+builder.Services.AddSingleton<DemTileResolver>(sp =>
+{
+    var index = sp.GetRequiredService<DemTileIndex>();
+    var publicClient = sp.GetRequiredService<PublicSrtmClient>();
+    var writer = sp.GetRequiredService<DemTileWriter>();
+    return new DemTileResolver(index, publicClient, writer);
+});
+
 builder.Services.AddSingleton<TerrainChunkGenerator>(sp =>
 {
     var coordinateService = sp.GetRequiredService<WorldCoordinateService>();
-    var tileIndex = sp.GetRequiredService<DemTileIndex>();
+    var resolver = sp.GetRequiredService<DemTileResolver>();
     var tileCache = sp.GetRequiredService<HgtTileCache>();
     var tileLoader = sp.GetRequiredService<HgtTileLoader>();
     var config = sp.GetRequiredService<IOptions<WorldConfig>>();
     var logger = sp.GetRequiredService<ILogger<TerrainChunkGenerator>>();
-    return new TerrainChunkGenerator(coordinateService, tileIndex, tileCache, tileLoader, config, logger);
+    return new TerrainChunkGenerator(coordinateService, resolver, tileCache, tileLoader, config, logger);
 });
 
 builder.Services.AddScoped<WorldChunkRepository>(sp =>

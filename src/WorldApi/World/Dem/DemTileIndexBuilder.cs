@@ -29,16 +29,20 @@ public sealed class DemTileIndexBuilder
         {
             response = await _s3Client.ListObjectsV2Async(request);
 
-            foreach (var s3Object in response.S3Objects)
+            // Handle case where prefix doesn't exist (S3Objects is null)
+            if (response.S3Objects != null)
             {
-                if (s3Object.Key.EndsWith(".hgt", StringComparison.OrdinalIgnoreCase))
+                foreach (var s3Object in response.S3Objects)
                 {
-                    string filename = Path.GetFileName(s3Object.Key);
-                    var tile = SrtmFilenameParser.Parse(filename);
-                    
-                    // Update S3Key to use the full key path
-                    var tileWithFullKey = tile with { S3Key = s3Object.Key };
-                    index.Add(tileWithFullKey);
+                    if (s3Object.Key.EndsWith(".hgt", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string filename = Path.GetFileName(s3Object.Key);
+                        var tile = SrtmFilenameParser.Parse(filename);
+                        
+                        // Update S3Key to use the full key path
+                        var tileWithFullKey = tile with { S3Key = s3Object.Key };
+                        index.Add(tileWithFullKey);
+                    }
                 }
             }
 

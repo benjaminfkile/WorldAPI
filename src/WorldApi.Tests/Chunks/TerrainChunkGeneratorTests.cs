@@ -71,7 +71,7 @@ public class TerrainChunkGeneratorTests
 
     private static TerrainChunkGenerator CreateGenerator(
         WorldConfig config,
-        DemTileIndex tileIndex,
+        DemTileResolver resolver,
         HgtTileCache cache)
     {
         var coordinateService = new WorldCoordinateService(Options.Create(config));
@@ -84,11 +84,25 @@ public class TerrainChunkGeneratorTests
 
         return new TerrainChunkGenerator(
             coordinateService,
-            tileIndex,
+            resolver,
             cache,
             fakeLoader,
             Options.Create(config),
             mockLogger.Object);
+    }
+
+    private static DemTileResolver CreateResolverFromIndex(DemTileIndex index)
+    {
+        // For tests, create a resolver that only uses the pre-populated index
+        // Mock the public client and writer to throw TileNotFoundException if fetch is attempted
+        var mockPublicClient = new Mock<PublicSrtmClient>(new HttpClient());
+        mockPublicClient
+            .Setup(c => c.FetchAndDecompressTileAsync(It.IsAny<string>()))
+            .ThrowsAsync(new TileNotFoundException("N00E000", "https://s3.amazonaws.com/elevation-tiles-prod/skadi/N00/N00E000.hgt.gz"));
+        
+        var mockWriter = new Mock<DemTileWriter>(null!, "test-bucket");
+        
+        return new DemTileResolver(index, mockPublicClient.Object, mockWriter.Object);
     }
 
     [Fact]
@@ -112,7 +126,8 @@ public class TerrainChunkGeneratorTests
         var srtmTile = CreateSyntheticTile(46.0, -113.0, 1500);
         cache.Add(demTile.S3Key, srtmTile);
 
-        var generator = CreateGenerator(config, tileIndex, cache);
+        var resolver = CreateResolverFromIndex(tileIndex);
+        var generator = CreateGenerator(config, resolver, cache);
 
         // Act
         var chunk = await generator.GenerateAsync(0, 0, 10);
@@ -143,7 +158,8 @@ public class TerrainChunkGeneratorTests
         var srtmTile = CreateSyntheticTile(46.0, -113.0, 1500);
         cache.Add(demTile.S3Key, srtmTile);
 
-        var generator = CreateGenerator(config, tileIndex, cache);
+        var resolver = CreateResolverFromIndex(tileIndex);
+        var generator = CreateGenerator(config, resolver, cache);
 
         // Act
         var chunk = await generator.GenerateAsync(0, 0, 5);
@@ -175,7 +191,8 @@ public class TerrainChunkGeneratorTests
         var srtmTile = CreateGradientTile(46.0, -113.0);
         cache.Add(demTile.S3Key, srtmTile);
 
-        var generator = CreateGenerator(config, tileIndex, cache);
+        var resolver = CreateResolverFromIndex(tileIndex);
+        var generator = CreateGenerator(config, resolver, cache);
 
         // Act
         var chunk = await generator.GenerateAsync(0, 0, 5);
@@ -214,7 +231,8 @@ public class TerrainChunkGeneratorTests
         var srtmTile = CreateGradientTile(46.0, -113.0);
         cache.Add(demTile.S3Key, srtmTile);
 
-        var generator = CreateGenerator(config, tileIndex, cache);
+        var resolver = CreateResolverFromIndex(tileIndex);
+        var generator = CreateGenerator(config, resolver, cache);
 
         // Act - generate same chunk twice
         var chunk1 = await generator.GenerateAsync(0, 0, 5);
@@ -269,7 +287,8 @@ public class TerrainChunkGeneratorTests
         };
         cache.Add(demTile.S3Key, srtmTile);
 
-        var generator = CreateGenerator(config, tileIndex, cache);
+        var resolver = CreateResolverFromIndex(tileIndex);
+        var generator = CreateGenerator(config, resolver, cache);
 
         // Act
         var chunk = await generator.GenerateAsync(0, 0, 5);
@@ -288,13 +307,14 @@ public class TerrainChunkGeneratorTests
         var tileIndex = new DemTileIndex(); // Empty index
         var cache = new HgtTileCache();
 
-        var generator = CreateGenerator(config, tileIndex, cache);
+        var resolver = CreateResolverFromIndex(tileIndex);
+        var generator = CreateGenerator(config, resolver, cache);
 
         // Act & Assert
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
             () => generator.GenerateAsync(0, 0, 5));
         
-        Assert.Contains("No DEM tile found", exception.Message);
+        Assert.Contains("No DEM tile available", exception.Message);
     }
 
     [Fact]
@@ -318,7 +338,8 @@ public class TerrainChunkGeneratorTests
         var srtmTile = CreateSyntheticTile(46.0, -113.0, 1500);
         cache.Add(demTile.S3Key, srtmTile);
 
-        var generator = CreateGenerator(config, tileIndex, cache);
+        var resolver = CreateResolverFromIndex(tileIndex);
+        var generator = CreateGenerator(config, resolver, cache);
 
         // Act
         var chunk = await generator.GenerateAsync(5, 10, 5);
@@ -349,7 +370,8 @@ public class TerrainChunkGeneratorTests
         var srtmTile = CreateSyntheticTile(46.0, -113.0, 1500);
         cache.Add(demTile.S3Key, srtmTile);
 
-        var generator = CreateGenerator(config, tileIndex, cache);
+        var resolver = CreateResolverFromIndex(tileIndex);
+        var generator = CreateGenerator(config, resolver, cache);
 
         // Act
         var chunk5 = await generator.GenerateAsync(0, 0, 5);
@@ -383,7 +405,8 @@ public class TerrainChunkGeneratorTests
         var srtmTile = CreateSyntheticTile(46.0, -113.0, 1500);
         cache.Add(demTile.S3Key, srtmTile);
 
-        var generator = CreateGenerator(config, tileIndex, cache);
+        var resolver = CreateResolverFromIndex(tileIndex);
+        var generator = CreateGenerator(config, resolver, cache);
 
         // Act - generate multiple chunks that use same tile
         var chunk1 = await generator.GenerateAsync(0, 0, 5);
@@ -417,7 +440,8 @@ public class TerrainChunkGeneratorTests
         var srtmTile = CreateGradientTile(46.0, -114.0);
         cache.Add(demTile.S3Key, srtmTile);
 
-        var generator = CreateGenerator(config, tileIndex, cache);
+        var resolver = CreateResolverFromIndex(tileIndex);
+        var generator = CreateGenerator(config, resolver, cache);
         const int resolution = 16;
 
         // Act - generate two adjacent chunks horizontally
@@ -461,7 +485,8 @@ public class TerrainChunkGeneratorTests
         var srtmTile = CreateGradientTile(46.0, -114.0);
         cache.Add(demTile.S3Key, srtmTile);
 
-        var generator = CreateGenerator(config, tileIndex, cache);
+        var resolver = CreateResolverFromIndex(tileIndex);
+        var generator = CreateGenerator(config, resolver, cache);
         const int resolution = 16;
 
         // Act - generate two adjacent chunks vertically
@@ -504,7 +529,8 @@ public class TerrainChunkGeneratorTests
         var srtmTile = CreateGradientTile(46.0, -114.0);
         cache.Add(demTile.S3Key, srtmTile);
 
-        var generator = CreateGenerator(config, tileIndex, cache);
+        var resolver = CreateResolverFromIndex(tileIndex);
+        var generator = CreateGenerator(config, resolver, cache);
         const int resolution = 8;
         int gridSize = resolution + 1;
 
@@ -624,7 +650,8 @@ public class TerrainChunkGeneratorTests
         var srtmTile = CreateGradientTile(46.0, -114.0);
         cache.Add(demTile.S3Key, srtmTile);
 
-        var generator = CreateGenerator(config, tileIndex, cache);
+        var resolver = CreateResolverFromIndex(tileIndex);
+        var generator = CreateGenerator(config, resolver, cache);
         int gridSize = resolution + 1;
 
         // Act - generate adjacent chunks in positive directions

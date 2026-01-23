@@ -1,28 +1,58 @@
 namespace WorldApi.World.Dem;
 
+/// <summary>
+/// Thread-safe in-memory index of available DEM tiles.
+/// Supports runtime mutation for lazy-fetched tiles without requiring restart.
+/// </summary>
 public sealed class DemTileIndex
 {
     private readonly Dictionary<string, DemTile> _tiles = new();
+    private readonly object _lock = new();
 
+    /// <summary>
+    /// Adds a tile to the index. Thread-safe and idempotent.
+    /// If a tile with the same S3Key already exists, it will be replaced.
+    /// </summary>
     public void Add(DemTile tile)
     {
-        _tiles[tile.S3Key] = tile;
+        lock (_lock)
+        {
+            _tiles[tile.S3Key] = tile;
+        }
     }
 
-    public IReadOnlyCollection<DemTile> GetAllTiles() => _tiles.Values;
+    public IReadOnlyCollection<DemTile> GetAllTiles()
+    {
+        lock (_lock)
+        {
+            return _tiles.Values.ToList();
+        }
+    }
 
     public DemTile? FindTileContaining(double latitude, double longitude)
     {
-        foreach (var tile in _tiles.Values)
+        lock (_lock)
         {
-            if (latitude >= tile.MinLatitude && latitude < tile.MaxLatitude &&
-                longitude >= tile.MinLongitude && longitude < tile.MaxLongitude)
+            foreach (var tile in _tiles.Values)
             {
-                return tile;
+                if (latitude >= tile.MinLatitude && latitude < tile.MaxLatitude &&
+                    longitude >= tile.MinLongitude && longitude < tile.MaxLongitude)
+                {
+                    return tile;
+                }
             }
+            return null;
         }
-        return null;
     }
 
-    public int Count => _tiles.Count;
+    public int Count
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _tiles.Count;
+            }
+        }
+    }
 }

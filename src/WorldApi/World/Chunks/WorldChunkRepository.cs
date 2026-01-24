@@ -241,4 +241,34 @@ public sealed class WorldChunkRepository
         var chunk = await GetChunkAsync(chunkX, chunkZ, layer, resolution, worldVersion);
         return chunk != null && chunk.Status == ChunkStatus.Ready;
     }
+
+    /// <summary>
+    /// Check if any chunks exist for a given world version.
+    /// Used by startup logic to determine if the anchor chunk needs to be generated.
+    /// 
+    /// Returns true if at least one chunk (any layer, any resolution) exists for the world version.
+    /// </summary>
+    public async Task<bool> AnyChunksExistAsync(string worldVersion)
+    {
+        // Resolve world_version_id from string
+        var worldVersionId = await GetWorldVersionIdAsync(worldVersion);
+        if (worldVersionId == null)
+        {
+            // World version not found, so no chunks can exist
+            return false;
+        }
+
+        const string sql = @"
+            SELECT 1 FROM world_chunks
+            WHERE world_version_id = @worldVersionId
+            LIMIT 1";
+
+        await using var connection = await _dataSource.OpenConnectionAsync();
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@worldVersionId", worldVersionId.Value);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        return await reader.ReadAsync();
+    }
 }

@@ -115,39 +115,7 @@ builder.Services.AddSingleton<IWorldVersionService>(sp =>
     return new WorldVersionService(dataSource);
 });
 
-// Load active world versions from PostgreSQL at startup
-// This happens BEFORE the DI container is finalized, ensuring cache is ready for requests
-#pragma warning disable ASP0000
-using (var preStartScope = builder.Services.BuildServiceProvider().CreateScope())
-{
-    var dataSource = preStartScope.ServiceProvider.GetRequiredService<NpgsqlDataSource>();
-    var logger = preStartScope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    
-    logger.LogInformation("🚀 Loading active world versions from PostgreSQL at startup...");
-    
-    var activeVersions = await LoadActiveWorldVersionsFromDatabaseAsync(dataSource, logger);
-    
-    if (activeVersions.Count == 0)
-    {
-        var errorMsg = "❌ STARTUP FAILURE: No active world versions found in database. " +
-            "At least one world version must have is_active=true. " +
-            "Check your database configuration.";
-        logger.LogCritical(errorMsg);
-        throw new InvalidOperationException(errorMsg);
-    }
-
-    logger.LogInformation("✓ Successfully loaded {Count} active world version(s) at startup", activeVersions.Count);
-
-    // Register the populated cache as singleton
-    builder.Services.AddSingleton<IWorldVersionCache>(sp =>
-    {
-        var cacheLogger = sp.GetRequiredService<ILogger<WorldVersionCache>>();
-        return new WorldVersionCache(activeVersions, cacheLogger);
-    });
-}
-#pragma warning restore ASP0000
-
-// Configure S3 client based on secrets (after secrets are loaded)
+// Configure S3 client based on secrets (before anchor chunk generator)
 builder.Services.AddSingleton<IAmazonS3>(sp =>
 {
     // Parse UseLocalS3 string to bool (accepts "true"/"false", case-insensitive)
@@ -184,10 +152,100 @@ builder.Services.AddSingleton<IAmazonS3>(sp =>
     return new AmazonS3Client();
 });
 
-// World services
+// World services (required for AnchorChunkGenerator)
 builder.Services.AddSingleton<WorldCoordinateService>();
 builder.Services.AddSingleton<HgtTileCache>();
 builder.Services.AddSingleton<DemTileIndex>();
+
+// Register AnchorChunkGenerator before startup scope (needed for anchor generation)
+builder.Services.AddSingleton<AnchorChunkGenerator>();
+
+// Load active world versions from PostgreSQL at startup
+// This happens BEFORE the DI container is finalized, ensuring cache is ready for requests
+#pragma warning disable ASP0000
+using (var preStartScope = builder.Services.BuildServiceProvider().CreateScope())
+{
+    var dataSource = preStartScope.ServiceProvider.GetRequiredService<NpgsqlDataSource>();
+    var logger = preStartScope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    
+    logger.LogInformation("🚀 Loading active world versions from PostgreSQL at startup...");
+    
+    var activeVersions = await LoadActiveWorldVersionsFromDatabaseAsync(dataSource, logger);
+    
+    if (activeVersions.Count == 0)
+    {
+        var errorMsg = "❌ STARTUP FAILURE: No active world versions found in database. " +
+            "At least one world version must have is_active=true. " +
+            "Check your database configuration.";
+        logger.LogCritical(errorMsg);
+        throw new InvalidOperationException(errorMsg);
+    }
+
+    logger.LogInformation("✓ Successfully loaded {Count} active world version(s) at startup", activeVersions.Count);
+
+    // Register the populated cache as singleton
+    builder.Services.AddSingleton<IWorldVersionCache>(sp =>
+    {
+        var cacheLogger = sp.GetRequiredService<ILogger<WorldVersionCache>>();
+        return new WorldVersionCache(activeVersions, cacheLogger);
+    });
+
+    // Generate anchor chunks for world versions that don't have any chunks yet
+    logger.LogInformation("🔧 Checking if anchor chunks need to be generated...");
+    
+    try
+    {
+        var repository = new WorldChunkRepository(dataSource);
+        var anchorGenerator = preStartScope.ServiceProvider.GetRequiredService<AnchorChunkGenerator>();
+        var s3Client = preStartScope.ServiceProvider.GetRequiredService<IAmazonS3>();
+        var appSecretsOpts = preStartScope.ServiceProvider.GetRequiredService<IOptions<WorldAppSecrets>>();
+        var startupAppSecrets = appSecretsOpts.Value;
+        var loggerFactory = preStartScope.ServiceProvider.GetRequiredService<ILoggerFactory>();
+        var chunkWriterLogger = loggerFactory.CreateLogger<TerrainChunkWriter>();
+        
+        var bucketName = startupAppSecrets.S3BucketName ?? throw new InvalidOperationException("S3 bucket name not configured in app secrets (s3BucketName)");
+        var chunkWriter = new TerrainChunkWriter(s3Client, bucketName, chunkWriterLogger);
+
+        foreach (var version in activeVersions)
+        {
+            // Check if any chunks exist for this world version
+            if (await repository.AnyChunksExistAsync(version.Version))
+            {
+                logger.LogInformation("✓ World version '{Version}' already has chunks, skipping anchor generation", version.Version);
+                continue;
+            }
+
+            logger.LogInformation("📍 Generating anchor chunk for world version '{Version}'...", version.Version);
+
+            // Generate the anchor chunk
+            var anchorChunk = anchorGenerator.GenerateAnchorChunk();
+            
+            // Write chunk to S3
+            var s3Key = anchorGenerator.GetAnchorChunkS3Key(version.Version);
+            var uploadResult = await chunkWriter.WriteAsync(anchorChunk, s3Key);
+            
+            // Insert chunk metadata into database
+            await repository.UpsertReadyAsync(
+                anchorChunk.ChunkX,
+                anchorChunk.ChunkZ,
+                anchorGenerator.GetAnchorLayer(),
+                anchorChunk.Resolution,
+                version.Version,
+                s3Key,
+                uploadResult.Checksum);
+            
+            logger.LogInformation("✓ Anchor chunk persisted for world version '{Version}': S3Key={S3Key}", version.Version, s3Key);
+        }
+
+        logger.LogInformation("✓ Anchor chunk initialization complete");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "⚠ Anchor chunk generation failed - this may indicate a configuration issue");
+        throw;
+    }
+}
+#pragma warning restore ASP0000
 
 // HttpClient for PublicSrtmClient
 builder.Services.AddSingleton<PublicSrtmClient>(sp =>

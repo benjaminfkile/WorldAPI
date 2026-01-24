@@ -31,6 +31,11 @@ public sealed class TerrainChunkGenerator
         _logger = logger;
     }
 
+    /// <summary>
+    /// Exposes the coordinate service for use by the coordinator's DEM readiness check.
+    /// </summary>
+    internal WorldCoordinateService CoordinateService => _coordinateService;
+
     public async Task<TerrainChunk> GenerateAsync(int chunkX, int chunkZ, int resolution)
     {
         // _logger.LogInformation("[TRACE] GenerateAsync start: ChunkX={ChunkX}, ChunkZ={ChunkZ}, Resolution={Resolution}",

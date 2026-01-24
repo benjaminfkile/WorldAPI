@@ -37,15 +37,38 @@ public class PublicSrtmClient
 
         response.EnsureSuccessStatusCode();
 
-        // Download compressed content
-        await using Stream compressedStream = await response.Content.ReadAsStreamAsync();
+        // Download compressed content to memory first
+        byte[] compressedData = await response.Content.ReadAsByteArrayAsync();
+        
+        // Log first 4 bytes to debug format (gzip magic is 0x1f 0x8b)
+        string dataHex = compressedData.Length >= 4 
+            ? $"{compressedData[0]:X2}{compressedData[1]:X2}{compressedData[2]:X2}{compressedData[3]:X2}" 
+            : "TOO_SHORT";
         
         // Decompress gzip to raw .hgt
-        await using var gzipStream = new GZipStream(compressedStream, CompressionMode.Decompress);
-        using var memoryStream = new MemoryStream();
-        await gzipStream.CopyToAsync(memoryStream);
+        using var compressedStream = new MemoryStream(compressedData);
+        using var gzipStream = new GZipStream(compressedStream, CompressionMode.Decompress);
+        using var decompressedStream = new MemoryStream();
+        
+        try
+        {
+            await gzipStream.CopyToAsync(decompressedStream);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Failed to decompress SRTM tile {tileName}: {ex.Message}", ex);
+        }
 
-        return memoryStream.ToArray();
+        byte[] decompressed = decompressedStream.ToArray();
+        
+        if (decompressed.Length == 0)
+        {
+            throw new InvalidOperationException(
+                $"SRTM tile {tileName} decompressed to empty data (compressed size was {compressedData.Length} bytes, first 4 bytes: {dataHex})");
+        }
+
+        return decompressed;
     }
 }
 

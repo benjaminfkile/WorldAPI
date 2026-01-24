@@ -183,7 +183,27 @@ public sealed class TerrainChunksController : ControllerBase
         // Chunk doesn't exist - trigger generation and return 202
         // TriggerGenerationAsync will check if already pending/ready to avoid duplicate work
         Response.Headers.CacheControl = "no-store";
-        await _coordinator.TriggerGenerationAsync(chunkX, chunkZ, resolution, worldVersion);
-        return Accepted();
+        
+        try
+        {
+            await _coordinator.TriggerGenerationAsync(chunkX, chunkZ, resolution, worldVersion);
+            return Accepted();
+        }
+        catch (DemTileNotReadyException ex)
+        {
+            // DEM tile is not ready for this chunk's region
+            // Return 409 Conflict with error details
+            _logger.LogWarning(
+                "Chunk generation blocked by DEM readiness gate: chunk ({ChunkX}, {ChunkZ}), tileKey={TileKey}",
+                chunkX, chunkZ, ex.TileKey);
+            
+            Response.Headers.CacheControl = "no-store";
+            return Conflict(new
+            {
+                error = "DEM tile not ready",
+                tileKey = ex.TileKey,
+                message = "The Digital Elevation Model for this region is still downloading. Please try again in a few moments."
+            });
+        }
     }
 }

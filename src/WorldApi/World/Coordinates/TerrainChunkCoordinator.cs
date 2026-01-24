@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using System.Security.Cryptography;
 using WorldApi.World.Config;
 using WorldApi.World.Chunks;
+using WorldApi.World.Dem;
 
 namespace WorldApi.World.Coordinates;
 
@@ -11,12 +12,18 @@ namespace WorldApi.World.Coordinates;
 /// 
 /// Applies backpressure via SemaphoreSlim to limit concurrent database writes
 /// and prevent connection exhaustion under heavy load.
+/// 
+/// DEM Readiness Gating:
+/// - Before any chunk generation, verifies that the required DEM tile is ready
+/// - Blocks chunk generation if DEM status is not 'ready'
+/// - Returns 409 Conflict if DEM is not available
 /// </summary>
 public class TerrainChunkCoordinator : ITerrainChunkCoordinator
 {
     private readonly WorldChunkRepository _repository;
     private readonly TerrainChunkGenerator _generator;
     private readonly TerrainChunkWriter _writer;
+    private readonly DemStatusService _demStatusService;
     private readonly ILogger<TerrainChunkCoordinator> _logger;
     private readonly SemaphoreSlim _dbWriteSemaphore;
 
@@ -24,12 +31,14 @@ public class TerrainChunkCoordinator : ITerrainChunkCoordinator
         WorldChunkRepository repository,
         TerrainChunkGenerator generator,
         TerrainChunkWriter writer,
+        DemStatusService demStatusService,
         ILogger<TerrainChunkCoordinator> logger,
         SemaphoreSlim dbWriteSemaphore)
     {
         _repository = repository;
         _generator = generator;
         _writer = writer;
+        _demStatusService = demStatusService ?? throw new ArgumentNullException(nameof(demStatusService));
         _logger = logger;
         _dbWriteSemaphore = dbWriteSemaphore ?? throw new ArgumentNullException(nameof(dbWriteSemaphore));
     }
@@ -136,10 +145,55 @@ public class TerrainChunkCoordinator : ITerrainChunkCoordinator
     }
 
     /// <summary>
+    /// Check if DEM tile is ready for chunk generation.
+    /// Determines geographic location of chunk and verifies DEM readiness.
+    /// Returns true only if DEM status is 'ready'.
+    /// </summary>
+    public virtual async Task<(bool IsReady, string TileKey)> IsDemReadyForChunkAsync(
+        int chunkX,
+        int chunkZ,
+        string worldVersion)
+    {
+        try
+        {
+            // Get geographic location of chunk origin
+            var chunkOrigin = _generator.CoordinateService.GetChunkOriginLatLon(chunkX, chunkZ);
+            
+            _logger.LogDebug(
+                "Checking DEM readiness: chunk ({ChunkX}, {ChunkZ}) at lat={Lat}, lon={Lon}, world={WorldVersion}",
+                chunkX, chunkZ, chunkOrigin.Latitude, chunkOrigin.Longitude, worldVersion);
+
+            // Check if DEM tile is ready
+            bool isReady = await _demStatusService.IsTileReadyAsync(
+                worldVersion,
+                chunkOrigin.Latitude,
+                chunkOrigin.Longitude);
+
+            // Calculate tile key for logging
+            string tileKey = SrtmTileNameCalculator.Calculate(chunkOrigin.Latitude, chunkOrigin.Longitude);
+
+            return (isReady, tileKey);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Error checking DEM readiness for chunk ({ChunkX}, {ChunkZ}), world={WorldVersion}",
+                chunkX, chunkZ, worldVersion);
+            // Return not ready on any error
+            return (false, "unknown");
+        }
+    }
+
+    /// <summary>
     /// Triggers chunk generation without waiting for completion.
-    /// Only starts generation if chunk is not already ready.
+    /// Only starts generation if:
+    /// 1. Chunk is not already ready
+    /// 2. DEM tile is ready for the chunk's geographic region
+    /// 
     /// Uses fire-and-forget pattern for async generation.
     /// Database writes are guarded by SemaphoreSlim to prevent connection storms.
+    /// 
+    /// Throws DemTileNotReadyException if DEM is not available.
     /// </summary>
     public virtual async Task TriggerGenerationAsync(
         int chunkX,
@@ -157,6 +211,23 @@ public class TerrainChunkCoordinator : ITerrainChunkCoordinator
             // Chunk already ready - do not regenerate
             return;
         }
+
+        // CRITICAL: Check DEM readiness before allowing chunk generation
+        // DEM tile must be ready for this chunk's geographic region
+        var demCheck = await IsDemReadyForChunkAsync(chunkX, chunkZ, worldVersion);
+        
+        if (!demCheck.IsReady)
+        {
+            _logger.LogWarning(
+                "Chunk generation blocked by DEM readiness gate: chunk ({ChunkX}, {ChunkZ}), world={WorldVersion}, tileKey={TileKey}",
+                chunkX, chunkZ, worldVersion, demCheck.TileKey);
+            
+            throw new DemTileNotReadyException(demCheck.TileKey);
+        }
+
+        _logger.LogInformation(
+            "DEM readiness confirmed, proceeding with chunk generation: chunk ({ChunkX}, {ChunkZ}), world={WorldVersion}, tileKey={TileKey}",
+            chunkX, chunkZ, worldVersion, demCheck.TileKey);
 
         // Fire-and-forget generation (with S3-first ordering)
         _ = Task.Run(async () =>
@@ -194,5 +265,20 @@ public class TerrainChunkCoordinator : ITerrainChunkCoordinator
                     chunkX, chunkZ, resolution);
             }
         });
+    }
+}
+
+/// <summary>
+/// Exception thrown when a DEM tile is required for chunk generation but is not ready.
+/// Used for readiness gating in TerrainChunkCoordinator.
+/// </summary>
+public class DemTileNotReadyException : InvalidOperationException
+{
+    public string TileKey { get; }
+
+    public DemTileNotReadyException(string tileKey)
+        : base($"DEM tile '{tileKey}' is not ready for chunk generation. Try again after DEM download completes.")
+    {
+        TileKey = tileKey;
     }
 }

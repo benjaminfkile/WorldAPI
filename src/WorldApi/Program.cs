@@ -323,6 +323,50 @@ builder.Services.AddScoped<WorldChunkRepository>(sp =>
     return new WorldChunkRepository(dataSource);
 });
 
+// ============================================================================
+// DEM Readiness Gating Services
+// ============================================================================
+
+// Register DEM tile repository for database access
+builder.Services.AddSingleton<DemTileRepository>(sp =>
+{
+    var dataSource = sp.GetRequiredService<NpgsqlDataSource>();
+    return new DemTileRepository(dataSource);
+});
+
+// Register DEM status service for querying and managing tile readiness
+// Uses a callback to enqueue DEM downloads when tiles transition to 'missing'
+builder.Services.AddSingleton<DemStatusService>(sp =>
+{
+    var repository = sp.GetRequiredService<DemTileRepository>();
+    var logger = sp.GetRequiredService<ILogger<DemStatusService>>();
+    
+    // Callback to enqueue DEM download (fire-and-forget)
+    // This will be invoked when a new tile transitions to 'missing'
+    Action<string, string>? onTileMissingCallback = (worldVersion, tileKey) =>
+    {
+        logger.LogInformation(
+            "DEM tile enqueued for download: world={WorldVersion}, tileKey={TileKey}",
+            worldVersion, tileKey);
+        // Background worker will poll for missing tiles and process them
+    };
+    
+    return new DemStatusService(repository, logger, onTileMissingCallback);
+});
+
+// Register DEM download worker as hosted service
+// Polls database for missing/downloading tiles and processes them in background
+builder.Services.AddHostedService<DemDownloadWorker>(sp =>
+{
+    var demRepository = sp.GetRequiredService<DemTileRepository>();
+    var publicClient = sp.GetRequiredService<PublicSrtmClient>();
+    var demWriter = sp.GetRequiredService<DemTileWriter>();
+    var demIndex = sp.GetRequiredService<DemTileIndex>();
+    var versionCache = sp.GetRequiredService<IWorldVersionCache>();
+    var logger = sp.GetRequiredService<ILogger<DemDownloadWorker>>();
+    return new DemDownloadWorker(demRepository, publicClient, demWriter, demIndex, versionCache, logger);
+});
+
 // Register terrain chunk coordinator (orchestration only - no S3 dependencies)
 // SemaphoreSlim(3) limits concurrent database writes to 3 to prevent connection exhaustion
 builder.Services.AddScoped<ITerrainChunkCoordinator>(sp =>
@@ -330,9 +374,10 @@ builder.Services.AddScoped<ITerrainChunkCoordinator>(sp =>
     var repository = sp.GetRequiredService<WorldChunkRepository>();
     var generator = sp.GetRequiredService<TerrainChunkGenerator>();
     var writer = sp.GetRequiredService<TerrainChunkWriter>();
+    var demStatusService = sp.GetRequiredService<DemStatusService>();
     var logger = sp.GetRequiredService<ILogger<TerrainChunkCoordinator>>();
     var dbWriteSemaphore = new SemaphoreSlim(3, 3);  // Max 3 concurrent DB writes
-    return new TerrainChunkCoordinator(repository, generator, writer, logger, dbWriteSemaphore);
+    return new TerrainChunkCoordinator(repository, generator, writer, demStatusService, logger, dbWriteSemaphore);
 });
 
 // Register hosted service to populate DEM tile index at startup

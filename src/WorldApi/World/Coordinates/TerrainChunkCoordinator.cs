@@ -16,7 +16,7 @@ namespace WorldApi.World.Coordinates;
 /// DEM Readiness Gating:
 /// - Before any chunk generation, verifies that the required DEM tile is ready
 /// - Blocks chunk generation if DEM status is not 'ready'
-/// - Returns 409 Conflict if DEM is not available
+/// - Returns 204 No Content if DEM is not available
 /// </summary>
 public class TerrainChunkCoordinator : ITerrainChunkCoordinator
 {

@@ -28,7 +28,7 @@ public sealed class DemDownloadWorker : BackgroundService
     private readonly DemTileIndex _demTileIndex;
     private readonly IWorldVersionCache _versionCache;
     private readonly ILogger<DemDownloadWorker> _logger;
-    private readonly TimeSpan _pollInterval = TimeSpan.FromSeconds(15);  // Poll every 15 seconds
+    private readonly TimeSpan _pollInterval = TimeSpan.FromSeconds(1);  //TODO: Poll every 1 second this sucks fix this somehow
 
     public DemDownloadWorker(
         DemTileRepository demTileRepository,
@@ -123,8 +123,8 @@ public sealed class DemDownloadWorker : BackgroundService
             
             var tiles = await _demTileRepository.GetAllByStatusAsync(worldVersion, status, limit);
             
-            _logger.LogInformation("📊 Query result: Found {Count} tile(s) with status '{Status}' for world {Version}", 
-                tiles.Count, status, worldVersion);
+            // _logger.LogInformation("📊 Query result: Found {Count} tile(s) with status '{Status}' for world {Version}", 
+            //     tiles.Count, status, worldVersion);
             
             if (tiles.Count == 0)
             {

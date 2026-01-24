@@ -192,18 +192,13 @@ public sealed class TerrainChunksController : ControllerBase
         catch (DemTileNotReadyException ex)
         {
             // DEM tile is not ready for this chunk's region
-            // Return 409 Conflict with error details
+            // Return 204 No Content (no response body allowed)
             _logger.LogWarning(
                 "Chunk generation blocked by DEM readiness gate: chunk ({ChunkX}, {ChunkZ}), tileKey={TileKey}",
                 chunkX, chunkZ, ex.TileKey);
             
             Response.Headers.CacheControl = "no-store";
-            return Conflict(new
-            {
-                error = "DEM tile not ready",
-                tileKey = ex.TileKey,
-                message = "The Digital Elevation Model for this region is still downloading. Please try again in a few moments."
-            });
+            return StatusCode(204);
         }
     }
 }

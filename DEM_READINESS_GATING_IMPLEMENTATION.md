@@ -63,7 +63,7 @@ The **DEM (Digital Elevation Model) Readiness Gating** feature has been **fully 
                      │
                      ▼
         ┌────────────────────────────────┐
-        │ CLIENT RECEIVES 409 CONFLICT   │
+        │ CLIENT RECEIVES 204 NO CONTENT │
         │ with tile key & wait message   │
         │ (Retry after ~30 seconds)      │
         └────────────────────────────────┘
@@ -174,7 +174,7 @@ CREATE TABLE dem_tiles (
 
 #### 3. **TerrainChunksController** - `Controllers/TerrainChunksController.cs`
 - **Change**: Added try-catch for `DemTileNotReadyException`
-- **Response**: Returns `409 Conflict` with tile key and message
+- **Response**: Returns `204 No Content` with friendly message and tile key
 - **Purpose**: Clear feedback to clients when DEM not ready
 
 #### 4. **Program.cs** - Dependency Injection
@@ -274,8 +274,8 @@ curl -X POST http://localhost:5000/world/v1/chunks \
 **Expected Response:**
 ```json
 {
-  "statusCode": 409,
-  "message": "DEM tile 'N46W114' is not ready. Status: missing. Please retry in 30 seconds.",
+  "statusCode": 204,
+  "message": "The Digital Elevation Model for this region is still downloading. Please try again in a few moments.",
   "tileKey": "N46W114"
 }
 ```

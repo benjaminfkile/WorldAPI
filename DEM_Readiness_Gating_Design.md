@@ -158,7 +158,7 @@ Before any chunk generation logic:
 
 ### API Response When Blocked
 
-- `409 Conflict` or `204 No Content`
+- `204 No Content` - DEM is still downloading, client should retry
 - No retries or partial data
 
 ---

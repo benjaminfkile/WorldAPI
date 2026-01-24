@@ -100,7 +100,7 @@ Successfully implemented DEM (Digital Elevation Model) readiness gating for the 
 - **Change:** Added exception handling in `GetTerrainChunk()` endpoint
 - **Behavior:**
   - Catches `DemTileNotReadyException` from coordinator
-  - Returns HTTP 409 Conflict with error details
+  - Returns HTTP 204 No Content with friendly message
   - Response includes tile key and user-friendly message
 - **Response:**
   ```json
@@ -126,7 +126,7 @@ Successfully implemented DEM (Digital Elevation Model) readiness gating for the 
 ### ✅ DEM Readiness is a Prerequisite
 - Chunk generation blocked until DEM status is 'ready'
 - No partial data or placeholder geometry
-- Clients informed of blocking via 409 Conflict response
+- Clients informed of blocking via 204 No Content response with retry message
 
 ### ✅ Fire-and-Forget Downloads
 - Request threads never wait for DEM downloads
@@ -224,7 +224,7 @@ CREATE INDEX idx_dem_tiles_tile_key ON dem_tiles(tile_key);
 - [ ] Verify DEM status controller responds at `/world/{version}/dem/status`
 - [ ] Monitor logs for DemDownloadWorker startup
 - [ ] Test with client DEM status poll for known coordinates
-- [ ] Verify chunk generation blocked until DEM ready (409 response)
+- [ ] Verify chunk generation blocked until DEM ready (204 response)
 - [ ] Monitor background worker for successful downloads
 - [ ] Verify chunk generation proceeds once DEM ready
 
@@ -240,7 +240,7 @@ CREATE INDEX idx_dem_tiles_tile_key ON dem_tiles(tile_key);
 
 ### Integration Tests (Priority: High)
 - DEM status endpoint returns correct status
-- Chunk generation blocked with 409 when DEM not ready
+- Chunk generation blocked with 204 when DEM not ready
 - Chunk generation proceeds when DEM ready
 - Background worker successfully downloads and indexes tile
 

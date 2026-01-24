@@ -170,7 +170,7 @@ curl -X POST http://localhost:5000/world/v1/chunks \
 ```
 
 **Expected flow:**
-1. First request: `409 Conflict` - DEM not ready (because tile was in 'missing' state)
+1. First request: `204 No Content` - DEM not ready (because tile was in 'missing' state), friendly message indicates retry
 2. Wait 15-30 seconds for worker to process
 3. Second request: `202 Accepted` - Chunk generation started
 4. Check `GET /world/v1/chunks/generation-status` to monitor progress

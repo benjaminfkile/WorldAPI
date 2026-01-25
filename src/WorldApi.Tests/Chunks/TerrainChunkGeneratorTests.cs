@@ -673,4 +673,71 @@ public class TerrainChunkGeneratorTests
             Assert.Equal(chunk00.Heights[chunk00NorthIdx], chunk01.Heights[chunk01SouthIdx]);
         }
     }
+
+    [Fact]
+    public async Task GenerateAsync_ChunkCrossingTileBoundary_UsesNeighborTileInsteadOfClamping()
+    {
+        // Arrange - pick a chunk size large enough to cross a 1° SRTM boundary in longitude
+        var config = new WorldConfig
+        {
+            Origin = new OriginConfig { Latitude = 46.0, Longitude = -114.5 },
+            ChunkSizeMeters = 80000, // ~1.0° in longitude at 46° latitude
+            MetersPerDegreeLatitude = 111320
+        };
+
+        var tileIndex = new DemTileIndex();
+        var cache = new HgtTileCache();
+
+        var westTile = new DemTile
+        {
+            MinLatitude = 46.0,
+            MaxLatitude = 47.0,
+            MinLongitude = -115.0,
+            MaxLongitude = -114.0,
+            S3Key = "dem/srtm/N46W115.hgt"
+        };
+
+        var eastTile = new DemTile
+        {
+            MinLatitude = 46.0,
+            MaxLatitude = 47.0,
+            MinLongitude = -114.0,
+            MaxLongitude = -113.0,
+            S3Key = "dem/srtm/N46W114.hgt"
+        };
+
+        tileIndex.Add(westTile);
+        tileIndex.Add(eastTile);
+
+        var westData = CreateSyntheticTile(46.0, -115.0, 900);
+        var eastData = CreateSyntheticTile(46.0, -114.0, 1900);
+        cache.Add(westTile.S3Key, westData);
+        cache.Add(eastTile.S3Key, eastData);
+
+        var resolver = CreateResolverFromIndex(tileIndex);
+        var generator = CreateGenerator(config, resolver, cache);
+        const int resolution = 8;
+        int gridSize = resolution + 1;
+        double cellSize = config.ChunkSizeMeters / resolution;
+        var coordinateService = new WorldCoordinateService(Options.Create(config));
+
+        // Act - generate a chunk that spans the -115/-114 to -114/-113 tile boundary
+        var chunk = await generator.GenerateAsync(0, 0, resolution);
+
+        // Assert - vertices west of the boundary use westTile heights, east (and on) use eastTile heights
+        for (int z = 0; z < gridSize; z++)
+        {
+            for (int x = 0; x < gridSize; x++)
+            {
+                int index = z * gridSize + x;
+
+                double worldX = (0 * resolution + x) * cellSize;
+                double worldZ = (0 * resolution + z) * cellSize;
+                var latLon = coordinateService.WorldMetersToLatLon(worldX, worldZ);
+
+                float expected = latLon.Longitude < -114.0 - 1e-9 ? 900f : 1900f;
+                Assert.Equal(expected, chunk.Heights[index], Tolerance);
+            }
+        }
+    }
 }

@@ -63,20 +63,49 @@ public sealed class TerrainChunkGenerator
                 $"No DEM tile available for chunk ({chunkX}, {chunkZ}) at lat/lon ({centerLat:F6}, {centerLon:F6})", ex);
         }
 
-        // Step 3: Load tile via cache/loader
-        if (!_tileCache.TryGet(demTile.S3Key, out SrtmTileData? tileData))
+        // Step 3: Prepare per-chunk tile caches so shared vertices reuse the same DEM tile
+        // and edge vertices can pull from the adjacent tile instead of being clamped.
+        var perChunkTileCache = new Dictionary<string, SrtmTileData>(StringComparer.OrdinalIgnoreCase);
+        var perChunkTileMeta = new Dictionary<string, DemTile>(StringComparer.OrdinalIgnoreCase)
         {
-            tileData = await _tileLoader.LoadAsync(demTile);
-            _tileCache.Add(demTile.S3Key, tileData);
+            // Seed with the center tile we already resolved to avoid an extra lookup
+            [SrtmTileNameCalculator.Calculate(centerLat, centerLon)] = demTile
+        };
+
+        async Task<SrtmTileData> ResolveTileDataAsync(double latitude, double longitude)
+        {
+            // Use the tile name as a stable key so vertices that sit exactly on a tile edge
+            // reuse the same metadata and sample the neighbor's border row/column instead of
+            // clamping the current tile's last sample, which creates visible seams.
+            string tileName = SrtmTileNameCalculator.Calculate(latitude, longitude);
+
+            if (!perChunkTileMeta.TryGetValue(tileName, out var resolvedTile))
+            {
+                resolvedTile = await _tileResolver.ResolveTileAsync(latitude, longitude);
+                perChunkTileMeta[tileName] = resolvedTile;
+            }
+
+            if (!perChunkTileCache.TryGetValue(tileName, out var tileData))
+            {
+                if (!_tileCache.TryGet(resolvedTile.S3Key, out tileData))
+                {
+                    tileData = await _tileLoader.LoadAsync(resolvedTile);
+                    _tileCache.Add(resolvedTile.S3Key, tileData);
+                }
+
+                perChunkTileCache[tileName] = tileData!;
+            }
+
+            return tileData!;
         }
 
-        // Step 4: Sample raw height grid
-        double[] rawHeights = ChunkHeightSampler.SampleHeights(
+        // Step 4: Sample raw height grid (per-vertex tile resolution prevents DEM edge gaps)
+        double[] rawHeights = await ChunkHeightSampler.SampleHeights(
             chunkX,
             chunkZ,
             resolution,
             _coordinateService,
-            tileData!,
+            ResolveTileDataAsync,
             _config.ChunkSizeMeters);
 
         // _logger.LogInformation("[TRACE] After SampleHeights: ChunkX={ChunkX}, ChunkZ={ChunkZ}, RawHeightsLength={RawHeightsLength}",

@@ -5,12 +5,12 @@ namespace WorldApi.World.Chunks;
 
 public static class ChunkHeightSampler
 {
-    public static double[] SampleHeights(
+    public static async Task<double[]> SampleHeights(
         int chunkX,
         int chunkZ,
         int resolution,
         WorldCoordinateService coordinateService,
-        SrtmTileData tile,
+        Func<double, double, Task<SrtmTileData>> resolveTileAsync,
         double chunkSizeMeters)
     {
         // Generate (resolution + 1) × (resolution + 1) grid for overlapping edges
@@ -48,7 +48,11 @@ public static class ChunkHeightSampler
                 // Convert world meters to lat/lon using consistent meters-per-degree conversion
                 var latLon = coordinateService.WorldMetersToLatLon(worldX, worldZ);
 
-                // Sample elevation from DEM tile
+                // Resolve the DEM tile for this exact vertex (including boundary vertices) so
+                // we never clamp past a tile edge and instead read the neighbor's border sample.
+                var tile = await resolveTileAsync(latLon.Latitude, latLon.Longitude).ConfigureAwait(false);
+
+                // Sample elevation from the resolved DEM tile
                 double elevation = DemSampler.SampleElevation(latLon.Latitude, latLon.Longitude, tile);
 
                 // Store in row-major order

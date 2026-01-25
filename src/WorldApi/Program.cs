@@ -152,6 +152,9 @@ builder.Services.AddSingleton<IAmazonS3>(sp =>
     return new AmazonS3Client();
 });
 
+// Register HttpClient for tile requests (imagery, DEM, etc)
+builder.Services.AddHttpClient();
+
 // World services (required for AnchorChunkGenerator)
 builder.Services.AddSingleton<WorldCoordinateService>();
 builder.Services.AddSingleton<HgtTileCache>();

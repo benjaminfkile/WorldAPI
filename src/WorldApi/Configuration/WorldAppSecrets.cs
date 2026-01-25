@@ -85,6 +85,13 @@ public class WorldAppSecrets
     public string? LocalDbPassword { get; set; }
 
     /// <summary>
+    /// MapTiler API key for imagery tile requests.
+    /// Used by ImageryTilesController to fetch tiles from MapTiler upstream.
+    /// </summary>
+    [JsonPropertyName("mapTilerApiKey")]
+    public string? MapTilerApiKey { get; set; }
+
+    /// <summary>
     /// Additional application settings can be added here without modifying infrastructure secrets.
     /// </summary>
 }

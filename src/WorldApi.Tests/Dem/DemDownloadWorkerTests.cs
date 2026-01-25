@@ -1,5 +1,7 @@
 using Moq;
 using Microsoft.Extensions.Logging;
+using Amazon.S3;
+using Npgsql;
 using WorldApi.Configuration;
 using WorldApi.World.Dem;
 
@@ -16,25 +18,40 @@ namespace WorldApi.Tests.Dem;
 /// - Records errors on failure
 /// - Updates database status appropriately
 /// </summary>
+internal static class DemTestHelpers
+{
+    public static DemTileRepository CreateRepository()
+    {
+        // Build a lightweight data source; no connections are opened in these ctor tests.
+        var builder = new NpgsqlDataSourceBuilder("Host=localhost;Username=test;Password=test;Database=test");
+        var dataSource = builder.Build();
+        return new DemTileRepository(dataSource);
+    }
+
+    public static DemTileIndex CreateTileIndex() => new();
+}
+
 public class DemDownloadWorkerTests
 {
+
     [Fact]
     public void DemDownloadWorker_CanBeConstructed_WithRequiredDependencies()
     {
         // Arrange
-        var mockRepository = new Mock<DemTileRepository>(null!);
-        var mockSrtmClient = new Mock<PublicSrtmClient>(null!);
-        var mockTileWriter = new Mock<DemTileWriter>(null!);
-        var mockTileIndex = new Mock<DemTileIndex>(null!);
+        var repository = DemTestHelpers.CreateRepository();
+        var publicClient = new PublicSrtmClient(new HttpClient());
+        var mockS3 = new Mock<IAmazonS3>();
+        var tileWriter = new DemTileWriter(mockS3.Object, "test-bucket");
+        var tileIndex = DemTestHelpers.CreateTileIndex();
         var mockVersionCache = new Mock<IWorldVersionCache>();
         var mockLogger = new Mock<ILogger<DemDownloadWorker>>();
 
         // Act
         var worker = new DemDownloadWorker(
-            mockRepository.Object,
-            mockSrtmClient.Object,
-            mockTileWriter.Object,
-            mockTileIndex.Object,
+            repository,
+            publicClient,
+            tileWriter,
+            tileIndex,
             mockVersionCache.Object,
             mockLogger.Object);
 
@@ -46,18 +63,19 @@ public class DemDownloadWorkerTests
     public void DemDownloadWorker_ThrowsArgumentNullException_WhenRepositoryIsNull()
     {
         // Arrange
-        var mockSrtmClient = new Mock<PublicSrtmClient>(null!);
-        var mockTileWriter = new Mock<DemTileWriter>(null!);
-        var mockTileIndex = new Mock<DemTileIndex>(null!);
+        var publicClient = new PublicSrtmClient(new HttpClient());
+        var mockS3 = new Mock<IAmazonS3>();
+        var tileWriter = new DemTileWriter(mockS3.Object, "test-bucket");
+        var tileIndex = DemTestHelpers.CreateTileIndex();
         var mockVersionCache = new Mock<IWorldVersionCache>();
         var mockLogger = new Mock<ILogger<DemDownloadWorker>>();
 
         // Act & Assert
         Assert.Throws<ArgumentNullException>(() => new DemDownloadWorker(
             null!,
-            mockSrtmClient.Object,
-            mockTileWriter.Object,
-            mockTileIndex.Object,
+                publicClient,
+                tileWriter,
+                tileIndex,
             mockVersionCache.Object,
             mockLogger.Object));
     }
@@ -66,18 +84,19 @@ public class DemDownloadWorkerTests
     public void DemDownloadWorker_ThrowsArgumentNullException_WhenVersionCacheIsNull()
     {
         // Arrange
-        var mockRepository = new Mock<DemTileRepository>(null!);
-        var mockSrtmClient = new Mock<PublicSrtmClient>(null!);
-        var mockTileWriter = new Mock<DemTileWriter>(null!);
-        var mockTileIndex = new Mock<DemTileIndex>(null!);
+        var repository = DemTestHelpers.CreateRepository();
+        var publicClient = new PublicSrtmClient(new HttpClient());
+        var mockS3 = new Mock<IAmazonS3>();
+        var tileWriter = new DemTileWriter(mockS3.Object, "test-bucket");
+        var tileIndex = DemTestHelpers.CreateTileIndex();
         var mockLogger = new Mock<ILogger<DemDownloadWorker>>();
 
         // Act & Assert
         Assert.Throws<ArgumentNullException>(() => new DemDownloadWorker(
-            mockRepository.Object,
-            mockSrtmClient.Object,
-            mockTileWriter.Object,
-            mockTileIndex.Object,
+            repository,
+            publicClient,
+            tileWriter,
+            tileIndex,
             null!,
             mockLogger.Object));
     }
@@ -92,11 +111,11 @@ public class DemStatusServiceTests
     public void DemStatusService_CanBeConstructed_WithRequiredDependencies()
     {
         // Arrange
-        var mockRepository = new Mock<DemTileRepository>(null!);
+        var repository = DemTestHelpers.CreateRepository();
         var mockLogger = new Mock<ILogger<DemStatusService>>();
 
         // Act
-        var service = new DemStatusService(mockRepository.Object, mockLogger.Object);
+        var service = new DemStatusService(repository, mockLogger.Object);
 
         // Assert
         Assert.NotNull(service);
